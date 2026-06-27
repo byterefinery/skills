@@ -12,37 +12,32 @@ curl -L https://github.com/byterefinery/skills/archive/refs/heads/main.tar.gz | 
 tar -xz --strip-components=3 -C .agents/skills skills-main/.agents/skills
 ```
 
-**Base Tools** (cbc, duckdb, jq, pandoc, rqlite, yq):
+**General Tools** (cbc, duckdb, jq, pandoc, rqlite, yq):
 ```bash
-mkdir -p .agents/skills-base && \
+mkdir -p .agents/skills && \
 curl -L https://github.com/byterefinery/skills/archive/refs/heads/main.tar.gz | \
-tar -xz --strip-components=3 -C .agents/skills-base skills-main/.agents/skills-base
+tar -xz --strip-components=3 -C .agents/skills skills-main/.agents/skills-base
 ```
 
 **Python Libraries** (basedpyright, duckdb-python, formulas, matplotlib, networkx, numpy, pandas, pulp, pyomo, pytest, pytest-asyncio, requests, ruff, scikit-learn, scipy, sqlalchemy, sympy, ty, uv):
 ```bash
-mkdir -p .agents/skills-python && \
+mkdir -p .agents/skills && \
 curl -L https://github.com/byterefinery/skills/archive/refs/heads/main.tar.gz | \
-tar -xz --strip-components=3 -C .agents/skills-python skills-main/.agents/skills-python
+tar -xz --strip-components=3 -C .agents/skills skills-main/.agents/skills-python
 ```
 
 **JavaScript Libraries** (mermaid, vega-lite):
 ```bash
-mkdir -p .agents/skills-javascript && \
+mkdir -p .agents/skills && \
 curl -L https://github.com/byterefinery/skills/archive/refs/heads/main.tar.gz | \
-tar -xz --strip-components=3 -C .agents/skills-javascript skills-main/.agents/skills-javascript
+tar -xz --strip-components=3 -C .agents/skills skills-main/.agents/skills-javascript
 ```
 
 **All Skills** (install every category at once):
 ```bash
-TMP=$(mktemp) && \
-mkdir -p .agents/skills .agents/skills-base .agents/skills-python .agents/skills-javascript && \
-curl -L https://github.com/byterefinery/skills/archive/refs/heads/main.tar.gz -o "$TMP" && \
-tar -xz --strip-components=2 -C .agents -f "$TMP" skills-main/.agents/skills && \
-tar -xz --strip-components=2 -C .agents -f "$TMP" skills-main/.agents/skills-base && \
-tar -xz --strip-components=2 -C .agents -f "$TMP" skills-main/.agents/skills-python && \
-tar -xz --strip-components=2 -C .agents -f "$TMP" skills-main/.agents/skills-javascript && \
-rm -f "$TMP"
+mkdir -p .agents/skills && \
+curl -L https://github.com/byterefinery/skills/archive/refs/heads/main.tar.gz | \
+tar -xz --strip-components=3 -C .agents/skills skills-main/.agents/skills skills-main/.agents/skills-base skills-main/.agents/skills-python skills-main/.agents/skills-javascript
 ```
 
 <!-- IMPORTANT: never change after this point because it is automatically generated -->
@@ -60,16 +55,16 @@ rm -f "$TMP"
 | [webfetch](.agents/skills/webfetch/) | Fetch web pages as markdown or HTML for LLM consumption |
 | [websearch](.agents/skills/websearch/) | Search the web via DuckDuckGo and return results as markdown, CSV, or JSON |
 
-### Base Tools
+### General Tools
 
 | Skill | Description |
 |-------|-------------|
-| [cbc-2-10-13](.agents/skills-base/cbc-2-10-13/) | COIN-OR Cbc — open-source MILP solver (branch-and-cut) |
-| [duckdb-1-5-3](.agents/skills-base/duckdb-1-5-3/) | DuckDB — high-performance analytical OLAP database with embedded SQL engine |
-| [jq-1-8-2](.agents/skills-base/jq-1-8-2/) | jq — lightweight command-line JSON processor |
-| [pandoc-3-10](.agents/skills-base/pandoc-3-10/) | Pandoc — convert documents between formats (Markdown, HTML, LaTeX, PDF, Word, etc.) |
-| [rqlite-10-2-4](.agents/skills-base/rqlite-10-2-4/) | rqlite — distributed SQLite database with Raft consensus |
-| [yq-4-53-3](.agents/skills-base/yq-4-53-3/) | yq — query, transform, and convert YAML, JSON, XML, INI, TOML, HCL, CSV, TSV |
+| [cbc-2-10-13](.agents/skills/cbc-2-10-13/) | COIN-OR Cbc — open-source MILP solver (branch-and-cut) |
+| [duckdb-1-5-3](.agents/skills/duckdb-1-5-3/) | DuckDB — high-performance analytical OLAP database with embedded SQL engine |
+| [jq-1-8-2](.agents/skills/jq-1-8-2/) | jq — lightweight command-line JSON processor |
+| [pandoc-3-10](.agents/skills/pandoc-3-10/) | Pandoc — convert documents between formats (Markdown, HTML, LaTeX, PDF, Word, etc.) |
+| [rqlite-10-2-4](.agents/skills/rqlite-10-2-4/) | rqlite — distributed SQLite database with Raft consensus |
+| [yq-4-53-3](.agents/skills/yq-4-53-3/) | yq — query, transform, and convert YAML, JSON, XML, INI, TOML, HCL, CSV, TSV |
 
 ### Python Libraries
 
@@ -106,8 +101,8 @@ rm -f "$TMP"
 
 | Category | Count |
 |----------|-------|
-| General Skills | 6 |
-| Base Tools | 6 |
+| Core Skills | 6 |
+| General Tools | 6 |
 | Python Libraries | 19 |
 | JavaScript Libraries | 2 |
 | **Total** | **33** |
