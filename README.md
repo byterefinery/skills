@@ -4,10 +4,45 @@ Skills by ByteRefinery
 
 ## Install / Update
 <!-- IMPORTANT: never change this section and code block -->
+
+**General Skills** (git, plan, skman, tzip, webfetch, websearch):
 ```bash
 mkdir -p .agents/skills && \
 curl -L https://github.com/byterefinery/skills/archive/refs/heads/main.tar.gz | \
-tar -xz --strip-components=3 -C .agents/skills byterefinery-skills-main/.agents/skills
+tar -xz --strip-components=3 -C .agents/skills skills-main/.agents/skills
+```
+
+**Base Tools** (cbc, duckdb, jq, pandoc, rqlite, yq):
+```bash
+mkdir -p .agents/skills-base && \
+curl -L https://github.com/byterefinery/skills/archive/refs/heads/main.tar.gz | \
+tar -xz --strip-components=3 -C .agents/skills-base skills-main/.agents/skills-base
+```
+
+**Python Libraries** (basedpyright, duckdb-python, formulas, matplotlib, networkx, numpy, pandas, pulp, pyomo, pytest, pytest-asyncio, requests, ruff, scikit-learn, scipy, sqlalchemy, sympy, ty, uv):
+```bash
+mkdir -p .agents/skills-python && \
+curl -L https://github.com/byterefinery/skills/archive/refs/heads/main.tar.gz | \
+tar -xz --strip-components=3 -C .agents/skills-python skills-main/.agents/skills-python
+```
+
+**JavaScript Libraries** (mermaid, vega-lite):
+```bash
+mkdir -p .agents/skills-javascript && \
+curl -L https://github.com/byterefinery/skills/archive/refs/heads/main.tar.gz | \
+tar -xz --strip-components=3 -C .agents/skills-javascript skills-main/.agents/skills-javascript
+```
+
+**All Skills** (install every category at once):
+```bash
+TMP=$(mktemp) && \
+mkdir -p .agents/skills .agents/skills-base .agents/skills-python .agents/skills-javascript && \
+curl -L https://github.com/byterefinery/skills/archive/refs/heads/main.tar.gz -o "$TMP" && \
+tar -xz --strip-components=2 -C .agents -f "$TMP" skills-main/.agents/skills && \
+tar -xz --strip-components=2 -C .agents -f "$TMP" skills-main/.agents/skills-base && \
+tar -xz --strip-components=2 -C .agents -f "$TMP" skills-main/.agents/skills-python && \
+tar -xz --strip-components=2 -C .agents -f "$TMP" skills-main/.agents/skills-javascript && \
+rm -f "$TMP"
 ```
 
 <!-- IMPORTANT: never change after this point because it is automatically generated -->
