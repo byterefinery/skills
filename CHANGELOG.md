@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-06-27 — README and Install Fixes
+
+### Changed
+- Renamed **Base Tools** category to **General Tools** (directory: `skills-base` → `skills-general`)
+- Install commands: each category now extracts to its own directory matching repo
+  structure (`skills`, `skills-general`, `skills-python`, `skills-javascript`) instead
+  of all extracting into flat `.agents/skills/`
+- Skills table regenerated from SKILL.md frontmatter with full descriptions (proper
+  YAML block scalar parsing) and category description paragraphs
+- Skill links updated to use correct category paths
+
+### Fixed
+- Install command mkdir/tar mismatch: `mkdir` created category directory but `tar`
+  extracted into `.agents/skills/` (non-existent for that category), causing failures
+- YAML block scalar descriptions (`>` multiline) showing as literal `"\>"` in table
+- Stale skill table links pointing to wrong directories
+
 ## 2026-06-27 — Initial Release
 
 ### Added
