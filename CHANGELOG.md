@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## 2026-06-28 — skman: Remove Trigger Terminology
+## 2026-06-28 — skman: Remove Trigger Terminology, README Cleanup
 
 ### Changed
 - **skman** SKILL.md removed all references to "trigger terms" and "under-triggering"
@@ -12,6 +12,10 @@ All notable changes to this project will be documented in this file.
 - Progressive Disclosure section rewritten to avoid implementation details about
   how skills are triggered; metadata is now described as "always visible to the
   agent" and SKILL.md body as "loaded on demand"
+- **README** install section cleaned up: removed inline skill name lists from
+  category headers (e.g. `Core Skills (git, plan, …)` → `Core Skills:`), added
+  clarifying prose for the All Skills installation method, and trimmed trailing
+  blank lines
 
 ## 2026-06-27 — README and Install Fixes
 

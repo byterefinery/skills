@@ -5,37 +5,39 @@ Skills by ByteRefinery
 ## Install / Update
 <!-- IMPORTANT: never change this section and code block -->
 
-**Core Skills** (git, plan, skman, tzip, webfetch, websearch):
+**Core Skills:**
 ```bash
 mkdir -p .agents/skills && \
 curl -L https://github.com/byterefinery/skills/archive/refs/heads/main.tar.gz | \
 tar -xz --strip-components=3 -C .agents/skills skills-main/.agents/skills
 ```
 
-**General Tools** (cbc, duckdb, jq, pandoc, rqlite, yq):
+**General Tools:**
 ```bash
 mkdir -p .agents/skills-general && \
 curl -L https://github.com/byterefinery/skills/archive/refs/heads/main.tar.gz | \
 tar -xz --strip-components=3 -C .agents/skills-general skills-main/.agents/skills-base
 ```
 
-**Python Libraries** (basedpyright, duckdb-python, formulas, matplotlib, networkx, numpy, pandas, pulp, pyomo, pytest, pytest-asyncio, requests, ruff, scikit-learn, scipy, sqlalchemy, sympy, ty, uv):
+**Python Libraries:**
 ```bash
 mkdir -p .agents/skills-python && \
 curl -L https://github.com/byterefinery/skills/archive/refs/heads/main.tar.gz | \
 tar -xz --strip-components=3 -C .agents/skills-python skills-main/.agents/skills-python
 ```
 
-**JavaScript Libraries** (daisyui, mermaid, vega-lite):
+**JavaScript Libraries:**
 ```bash
 mkdir -p .agents/skills-javascript && \
 curl -L https://github.com/byterefinery/skills/archive/refs/heads/main.tar.gz | \
 tar -xz --strip-components=3 -C .agents/skills-javascript skills-main/.agents/skills-javascript
 ```
 
-**All Skills** (install every category into a single `.agents/skills/`):
+**All Skills:** (install every category into a single `.agents/skills/`):
+
 All skill categories are extracted into the same `.agents/skills/` directory, blending
 Core Skills, General Tools, Python Libraries, and JavaScript Libraries together.
+
 ```bash
 TMP=$(mktemp) && \
 mkdir -p .agents/skills && \
@@ -46,8 +48,6 @@ tar -xz --strip-components=3 -C .agents/skills -f "$TMP" skills-main/.agents/ski
 tar -xz --strip-components=3 -C .agents/skills -f "$TMP" skills-main/.agents/skills-javascript && \
 rm -f "$TMP"
 ```
-
-
 
 <!-- IMPORTANT: never change after this point because it is automatically generated -->
 ## Skills Table
