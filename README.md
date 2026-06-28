@@ -33,15 +33,17 @@ curl -L https://github.com/byterefinery/skills/archive/refs/heads/main.tar.gz | 
 tar -xz --strip-components=3 -C .agents/skills-javascript skills-main/.agents/skills-javascript
 ```
 
-**All Skills** (install every category at once):
+**All Skills** (install every category into a single `.agents/skills/`):
+All skill categories are extracted into the same `.agents/skills/` directory, blending
+Core Skills, General Tools, Python Libraries, and JavaScript Libraries together.
 ```bash
 TMP=$(mktemp) && \
-mkdir -p .agents/skills .agents/skills-general .agents/skills-python .agents/skills-javascript && \
+mkdir -p .agents/skills && \
 curl -L https://github.com/byterefinery/skills/archive/refs/heads/main.tar.gz -o "$TMP" && \
 tar -xz --strip-components=3 -C .agents/skills -f "$TMP" skills-main/.agents/skills && \
-tar -xz --strip-components=3 -C .agents/skills-general -f "$TMP" skills-main/.agents/skills-base && \
-tar -xz --strip-components=3 -C .agents/skills-python -f "$TMP" skills-main/.agents/skills-python && \
-tar -xz --strip-components=3 -C .agents/skills-javascript -f "$TMP" skills-main/.agents/skills-javascript && \
+tar -xz --strip-components=3 -C .agents/skills -f "$TMP" skills-main/.agents/skills-base && \
+tar -xz --strip-components=3 -C .agents/skills -f "$TMP" skills-main/.agents/skills-python && \
+tar -xz --strip-components=3 -C .agents/skills -f "$TMP" skills-main/.agents/skills-javascript && \
 rm -f "$TMP"
 ```
 
