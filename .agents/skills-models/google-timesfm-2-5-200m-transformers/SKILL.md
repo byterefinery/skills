@@ -1,5 +1,5 @@
 ---
-name: timesfm-2-5-200m-transformers
+name: google-timesfm-2-5-200m-transformers
 description: >
   Forecast time series with Google's TimesFM-2.5 200M decoder-only transformer via
   HuggingFace transformers (TimesFm2_5ModelForPrediction). Patch-based input encoding,
@@ -17,7 +17,7 @@ metadata:
     - transformers
 ---
 
-# timesfm-2-5-200m-transformers
+# google-timesfm-2-5-200m-transformers
 
 ## Overview
 

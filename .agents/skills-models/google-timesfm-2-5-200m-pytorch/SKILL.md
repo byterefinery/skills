@@ -1,5 +1,5 @@
 ---
-name: timesfm-2-5-200m-pytorch
+name: google-timesfm-2-5-200m-pytorch
 description: Run Google's TimesFM 2.5 (200M, PyTorch) for zero-shot time-series forecasting. Use when the user asks to forecast time series, predict future values from historical data, or specifically mentions TimesFM 2.5. Returns point forecasts with calibrated quantile prediction intervals. Supports batched inference, covariates via XReg, and contexts up to 16,384 points.
 metadata:
   tags:
@@ -10,7 +10,7 @@ metadata:
     - pytorch
 ---
 
-# timesfm-2-5-200m-pytorch
+# google-timesfm-2-5-200m-pytorch
 
 ## Overview
 
