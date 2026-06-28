@@ -26,7 +26,7 @@ curl -L https://github.com/byterefinery/skills/archive/refs/heads/main.tar.gz | 
 tar -xz --strip-components=3 -C .agents/skills-python skills-main/.agents/skills-python
 ```
 
-**JavaScript Libraries** (mermaid, vega-lite):
+**JavaScript Libraries** (daisyui, mermaid, vega-lite):
 ```bash
 mkdir -p .agents/skills-javascript && \
 curl -L https://github.com/byterefinery/skills/archive/refs/heads/main.tar.gz | \
