@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-06-28 — skman: Remove Trigger Terminology
+
+### Changed
+- **skman** SKILL.md removed all references to "trigger terms" and "under-triggering"
+  from description writing guidelines. Replaced with neutral guidance: descriptions
+  should be specific and include relevant context (file extensions, tool names,
+  task types) so the agent knows when to apply the skill
+- Progressive Disclosure section rewritten to avoid implementation details about
+  how skills are triggered; metadata is now described as "always visible to the
+  agent" and SKILL.md body as "loaded on demand"
+
 ## 2026-06-27 — README and Install Fixes
 
 ### Changed

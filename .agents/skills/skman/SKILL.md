@@ -123,7 +123,7 @@ Follow these steps in order:
 
 1. **Choose a name** — lowercase, hyphens, numbers only (e.g., `pdf-processing`, `git-8-20-0`). No leading/trailing/consecutive hyphens.
 
-2. **Write the frontmatter** — exactly `name` and `description` at minimum. The `name` must match the directory name exactly (e.g., `name: demo-skill-2-4-1` for `demo-skill-2-4-1/`). The description determines when the agent loads this skill; make it specific with trigger terms.
+2. **Write the frontmatter** — exactly `name` and `description` at minimum. The `name` must match the directory name exactly (e.g., `name: demo-skill-2-4-1` for `demo-skill-2-4-1/`). The description determines when the agent loads this skill; make it specific.
 
 3. **Write the body** — concise instructions, under 500 lines. Must start with a level-1 heading matching `# <name>` or `# <name> <version>`. Structure:
    - `# <name>` (e.g., `# skman`) or `# <name> <version>` (e.g., `# demo-skill 2.4.1`)
@@ -198,15 +198,7 @@ Checks performed:
 ### Description Writing
 - Always third person ("Processes Excel files" not "I can help you")
 - Include both what the skill does and when to use it
-- Include key terms that trigger discovery (file extensions, tool names, task types)
-- **Combat under-triggering** — models tend to under-use skills. Make the description slightly "pushy" by explicitly naming trigger phrases and adjacent contexts the user might say, even if they don't name the skill directly. Example:
-  ```
-  # Weak
-  How to build a simple fast dashboard to display internal data.
-
-  # Pushy
-  How to build a simple fast dashboard to display internal data. Use this skill whenever the user mentions dashboards, data visualization, internal metrics, or wants to display any kind of company data, even if they don't explicitly ask for a "dashboard."
-  ```
+- Include relevant context (file extensions, tool names, task types) so the agent knows when to apply the skill
 
 ### Writing Style
 - **Use imperative voice** — "Run this command" not "You should run this command"
@@ -215,8 +207,8 @@ Checks performed:
 ### Progressive Disclosure
 Skills use a four-level loading system:
 
-1. **Metadata** (name + description) — always in context (~100 words). This is what determines whether the skill triggers.
-2. **SKILL.md body** — loaded when skill triggers (<500 lines ideal). Contains the core instructions.
+1. **Metadata** (name + description) — always in context (~100 words). Always visible to the agent.
+2. **SKILL.md body** — loaded on demand (<500 lines ideal). Contains the core instructions.
 3. **Scripts** — executed (not loaded into context). Run via `<name>.sh`.
 4. **References** — loaded as needed (unlimited). Reference files load on demand.
 
