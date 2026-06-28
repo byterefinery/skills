@@ -159,185 +159,21 @@ UV_TORCH_BACKEND=cu130 uv pip install torch torchvision
 
 ## Usage
 
-### Tensor Creation and Operations
+See the reference files for complete code examples:
 
-```python
-import torch
-
-# Creation
-x = torch.randn(3, 4)                    # random float32
-x = torch.zeros(3, 4, dtype=torch.int64) # explicit dtype
-x = torch.arange(10, device="cuda")       # on GPU
-x = torch.tensor([1.0, 2.0, 3.0])         # from Python list
-
-# Operations
-y = x @ x.T                              # matrix multiply
-y = torch.matmul(x, x.T)                 # explicit matmul
-y = x.sin()                              # elementwise
-y = x.sum(dim=1, keepdim=True)           # reduction
-y = x.view(2, 6)                         # reshape (same storage)
-y = x.reshape(2, 6)                      # reshape (may copy)
-
-# Indexing
-y = x[0, :]                              # row slice
-y = x[x > 0.5]                           # boolean mask
-y = x.index_select(0, torch.tensor([0, 2]))  # select rows
-```
-
-### Neural Network Module
-
-```python
-import torch.nn as nn
-import torch.nn.functional as F
-
-class MyModel(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.fc1 = nn.Linear(784, 256)
-        self.fc2 = nn.Linear(256, 10)
-        self.bn = nn.BatchNorm1d(256)
-
-    def forward(self, x):
-        x = x.view(x.size(0), -1)
-        x = F.relu(self.bn(self.fc1(x)))
-        x = F.dropout(x, p=0.3, training=self.training)
-        return self.fc2(x)
-
-model = MyModel()
-print(model)  # architecture summary
-```
-
-### Training Loop
-
-```python
-import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
-
-# Data
-dataset = TensorDataset(X, y)
-loader = DataLoader(dataset, batch_size=64, shuffle=True, num_workers=4)
-
-# Setup
-model = MyModel().cuda()
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-2)
-scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)
-
-# Train
-model.train()
-for epoch in range(10):
-    for batch_x, batch_y in loader:
-        batch_x, batch_y = batch_x.cuda(), batch_y.cuda()
-        optimizer.zero_grad()
-        logits = model(batch_x)
-        loss = criterion(logits, batch_y)
-        loss.backward()
-        optimizer.step()
-    scheduler.step()
-```
-
-### torch.compile (PyTorch 2.x)
-
-```python
-# Compile the model for faster execution
-model = torch.compile(MyModel())
-
-# With specific backend
-model = torch.compile(MyModel(), backend="inductor", fullgraph=True)
-
-# Compile a function
-@torch.compile
-def my_func(x, y):
-    return torch.sin(x) @ torch.cos(y)
-```
-
-### DataLoader with Custom Dataset
-
-```python
-from torch.utils.data import Dataset, DataLoader
-
-class ImageDataset(Dataset):
-    def __init__(self, image_paths, labels, transform=None):
-        self.paths = image_paths
-        self.labels = labels
-        self.transform = transform
-
-    def __len__(self):
-        return len(self.paths)
-
-    def __getitem__(self, idx):
-        image = load_image(self.paths[idx])
-        if self.transform:
-            image = self.transform(image)
-        return image, self.labels[idx]
-
-dataset = ImageDataset(paths, labels, transform=transforms)
-loader = DataLoader(
-    dataset,
-    batch_size=32,
-    shuffle=True,
-    num_workers=4,
-    pin_memory=True,       # faster CPU→GPU transfer
-    prefetch_factor=2,     # prefetch batches
-    persistent_workers=True,  # keep workers alive across epochs
-)
-```
-
-### Saving and Loading Models
-
-```python
-# Save weights only (recommended)
-torch.save(model.state_dict(), "model.pth")
-
-# Load
-model = MyModel()
-model.load_state_dict(torch.load("model.pth", weights_only=True))
-
-# Save full model (state dict + hyperparams)
-torch.save({
-    "epoch": epoch,
-    "state_dict": model.state_dict(),
-    "optimizer": optimizer.state_dict(),
-    "loss": loss.item(),
-}, "checkpoint.pth")
-
-# Load with strict=False for partial loading
-model.load_state_dict(checkpoint["state_dict"], strict=False)
-```
-
-### Gradient Accumulation
-
-```python
-accum_steps = 8
-optimizer.zero_grad()
-
-for i, (x, y) in enumerate(loader):
-    logits = model(x)
-    loss = criterion(logits, y) / accum_steps  # scale loss
-    loss.backward()
-
-    if (i + 1) % accum_steps == 0:
-        optimizer.step()
-        optimizer.zero_grad()
-```
-
-### Mixed Precision (AMP)
-
-```python
-from torch.amp import autocast
-from torch._dynamo import optimize
-
-scaler = torch.amp.GradScaler("cuda")
-
-for x, y in loader:
-    optimizer.zero_grad()
-    with autocast("cuda"):
-        logits = model(x)
-        loss = criterion(logits, y)
-    scaler.scale(loss).backward()
-    scaler.step(optimizer)
-    scaler.update()
-```
+- **Tensors** — creation, dtypes, shapes, indexing, broadcasting: [01-tensors](references/01-tensors.md)
+- **Operations** — math, linear algebra, reductions, FFT, random: [02-operations](references/02-operations.md)
+- **Neural networks** — `nn.Module`, layers, containers, hooks, initialization: [03-nn-module](references/03-nn-module.md)
+- **Functional API** — stateless activations, convolutions, pooling, losses: [04-nn-functional](references/04-nn-functional.md)
+- **Autograd** — automatic differentiation, custom functions, hooks: [05-autograd](references/05-autograd.md)
+- **Optimization** — optimizers, lr schedulers, gradient clipping, mixed precision: [06-optimization](references/06-optimization.md)
+- **Data loading** — `Dataset`, `DataLoader`, samplers, collate functions: [07-data](references/07-data.md)
+- **Compilation** — `torch.compile`, Inductor, dynamo, backends: [08-compile](references/08-compile.md)
+- **TorchScript** — scripting, tracing, serialization: [09-torchscript](references/09-torchscript.md)
+- **Distributed** — DDP, FSDP, collective ops, RPC: [10-distributed](references/10-distributed.md)
+- **CUDA** — device management, streams, memory, custom kernels: [11-cuda](references/11-cuda.md)
+- **Specialized** — sparse tensors, quantization, vmap, profiling: [12-specialized](references/12-specialized.md)
+- **Training workflow** — model definition, training loop, gradient accumulation, AMP, saving/loading: [13-training-workflow](references/13-training-workflow.md)
 
 ## Gotchas
 
@@ -385,3 +221,4 @@ for x, y in loader:
 - [10-distributed](references/10-distributed.md) — DDP, FSDP, collective ops, RPC, launch utilities
 - [11-cuda](references/11-cuda.md) — CUDA device management, streams, memory, custom kernels, cuDNN
 - [12-specialized](references/12-specialized.md) — Sparse tensors, quantization, vmap, functional API, profiling
+- [13-training-workflow](references/13-training-workflow.md) — Model definition, training loop, gradient accumulation, AMP, saving/loading

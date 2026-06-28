@@ -194,3 +194,28 @@ y = x.detach()             # view without grad tracking (shares storage)
 ```
 
 **Rule:** Use `.detach()` to break from computation graph. Use `.clone().detach()` when you need an independent copy.
+
+## Practical Patterns
+
+```python
+import torch
+
+# Creation shortcuts
+x = torch.randn(3, 4)                    # random float32
+x = torch.zeros(3, 4, dtype=torch.int64) # explicit dtype
+x = torch.arange(10, device="cuda")       # on GPU
+x = torch.tensor([1.0, 2.0, 3.0])         # from Python list
+
+# Operations
+y = x @ x.T                              # matrix multiply
+y = torch.matmul(x, x.T)                 # explicit matmul
+y = x.sin()                              # elementwise
+y = x.sum(dim=1, keepdim=True)           # reduction
+y = x.view(2, 6)                         # reshape (same storage)
+y = x.reshape(2, 6)                      # reshape (may copy)
+
+# Indexing
+y = x[0, :]                              # row slice
+y = x[x > 0.5]                           # boolean mask
+y = x.index_select(0, torch.tensor([0, 2]))  # select rows
+```
