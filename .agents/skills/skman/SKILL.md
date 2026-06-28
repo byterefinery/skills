@@ -86,15 +86,13 @@ A skill is a directory containing a `SKILL.md` file. Everything else is optional
 <skill-name>/
 ├── SKILL.md              # Required: frontmatter + instructions
 ├── scripts/              # Optional: helper scripts (executed, not loaded into context)
-│   ├── <skill-name>.sh   # Bash wrapper — the entry point referenced in SKILL.md
-│   └── _<skill-name>.py  # Python implementation (underscore prefix, not called directly)
+│   └── <skill-name>.sh   # Bash entry point — referenced in SKILL.md
 
-> Use `skman.sh create --with-scripts` to scaffold these.
+> Use `skman.sh create --with-scripts` to scaffold the bash wrapper.
 ├── references/           # Optional: detailed docs loaded on demand (numbered prefix)
 │   └── 01-topic.md
 │   └── 02-abc.md
 │   └── 03-xyz.md
-└── assets/               # Optional: templates, configs, etc.
 ```
 
 ### Frontmatter Fields
@@ -139,7 +137,7 @@ Follow these steps in order:
      ```
      Each line: link to the file followed by a dash and a brief topic summary.
 
-4. **Create a main script** (if automation is needed) — write the implementation as `scripts/_<skill-name>.py` (underscore prefix) and a thin bash wrapper `scripts/<skill-name>.sh` that passes all arguments through. Scripts are **executed** (not loaded into context). The SKILL.md references only the `.sh` file. Include `--help` at every level. Default: `python3` 3.10+ with built-in modules only (see *Scripting Defaults* below). On explicit user request, any programming language and libraries/frameworks are allowed. Scaffold with `--with-scripts`.
+4. **Create scripts** — only when the user explicitly requests them. The main script is always `scripts/<skill-name>.sh` (bash). Dependent scripts use whatever language the user specifies (Python, JS/Node/Bun/Deno, Lua, Bash, etc.) — never assume a language. Scripts are **executed** (not loaded into context). The SKILL.md references the `.sh` entry point. Include `--help` at every level. Scaffold with `--with-scripts`.
 
 5. **Validate** — run the validation script:
    ```bash
@@ -186,9 +184,10 @@ Checks performed:
 - Default assumption: the model already knows basics (what PDFs are, how libraries work)
 - Challenge each paragraph: "Does this justify its token cost?"
 
-### Scripting Defaults
-- **Default: `python3` 3.10+ with built-in modules only.** Allowed stdlib modules include: `os`, `sys`, `re`, `math`, `time`, `datetime`, `pathlib`, `argparse`, `asyncio`, `subprocess`, `urllib`, `hashlib`, `json`, `csv`, `io`, `collections`, `itertools`, `functools`, `textwrap`, `shutil`, `glob`, `tempfile`, `logging`, `struct`, `socket`, `ssl`, `email`, `html`, `xml.etree`, and other standard library modules. No third-party packages (no `pip install`, no `requests`, no `pyyaml`, etc.) unless explicitly requested.
-- **Explicit override: any technology allowed.** When the user explicitly requests a specific language, framework, or library — or asks for something that requires external dependencies — use whatever fits. Users have full freedom to write tools for any scenario. The default only applies when no preference is stated.
+### Scripting
+- **Main script is always `scripts/<name>.sh`** (bash) — the entry point referenced in SKILL.md
+- **Dependent scripts use whatever language the user specifies** — Python, JS (Node/Bun/Deno), Lua, Bash, or anything else. Never assume a language; ask the user or wait for their suggestion
+- Any libraries, frameworks, or dependencies are allowed when the user explicitly requests them
 
 ### Match Specificity to Task Fragility
 - **High freedom** (text instructions): multiple valid approaches, context-dependent decisions
@@ -235,6 +234,7 @@ Guidelines:
 
 ## Gotchas
 
+- **Never create `scripts/` or `assets/` automatically** — these directories are only created when the user explicitly asks for them. `skman.sh create` does not generate them by default; use `--with-scripts` only on direct user request. Never scaffold scripts or assets without being asked.
 - **Scaffolded `.sh` files may lose execute permission** — `skman.sh create --with-scripts` sets `chmod 0o755`, but editors or git checkouts can strip it. Always verify with `ls -l <name>.sh`; the validator warns if the bit is missing.
 - **`--strict` turns section warnings into errors** — only `## Overview` produces a warning when missing. `## Usage`, `## Gotchas`, and `## References` are truly optional and never warn (knowledge-only skills often have no Usage section). In strict mode, any warning fails validation.
 - **Frontmatter `name` must match the directory basename exactly** — e.g., `demo-skill-2-4-1/` requires `name: demo-skill-2-4-1`, `skman/` requires `name: skman`. The validator warns on mismatch. Fix by renaming the directory or correcting the frontmatter.

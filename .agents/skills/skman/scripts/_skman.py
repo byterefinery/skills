@@ -60,8 +60,6 @@ description: {description}
 
 ## Usage
 
-Run from the `scripts/` directory:
-
 ```bash
 {script_name}.sh --help
 ```
@@ -622,7 +620,7 @@ def cmd_create(args):
     with open(skill_md_path, 'w') as f:
         f.write(content)
 
-    # Optionally create scripts directory
+    # Optionally create scripts directory (bash wrapper only — no assumed implementation)
     if args.with_scripts:
         scripts_dir = os.path.join(skill_dir, 'scripts')
         os.makedirs(scripts_dir, exist_ok=True)
@@ -635,36 +633,13 @@ def cmd_create(args):
             f.write(f'set -euo pipefail\n')
             f.write(f'\n')
             f.write(f'SCRIPT_DIR="$(cd "$(dirname "${{BASH_SOURCE[0]}}")" && pwd)"\n')
-            f.write(f'exec python3 -B "$SCRIPT_DIR/_{name}.py" "$@"\n')
+            f.write(f'\n')
+            f.write(f'# TODO: implement {name}\n')
+            f.write(f'echo "Usage: {name}.sh <subcommand> [args...]"\n')
+            f.write(f'exit 1\n')
         os.chmod(sh_path, 0o755)
 
-        # Python implementation (underscore prefix)
-        py_path = os.path.join(scripts_dir, f'_{name}.py')
-        with open(py_path, 'w') as f:
-            f.write(f'#!/usr/bin/env python3\n')
-            f.write(f'"""{name} — {description}\n')
-            f.write(f'\n')
-            f.write(f'Usage:\n')
-            f.write(f'    {name}.sh --help\n')
-            f.write(f'\n')
-            f.write(f'Default: python3 3.10+ stdlib only (os, sys, re, pathlib, argparse,\n')
-            f.write(f'subprocess, urllib, json, etc.). On explicit user request, any language\n')
-            f.write(f'and libraries/frameworks are allowed.\n')
-            f.write(f'"""\n')
-            f.write(f'\n')
-            f.write(f'import argparse\n')
-            f.write(f'import sys\n')
-            f.write(f'\n')
-            f.write(f'\ndef main():\n')
-            f.write(f'    parser = argparse.ArgumentParser(prog="{name}")\n')
-            f.write(f'    parser.parse_args()\n')
-            f.write(f'    print("TODO: implement {name}")\n')
-            f.write(f'\n')
-            f.write(f'\nif __name__ == "__main__":\n')
-            f.write(f'    main()\n')
-
         print(f"create: created bash wrapper at {sh_path}")
-        print(f"create: created python impl  at {py_path}")
 
     # Optionally create references directory
     if args.with_references:
@@ -1104,7 +1079,7 @@ def build_parser():
     p_create.add_argument(
         '--with-scripts',
         action='store_true',
-        help='Also create scripts/ directory with bash wrapper + python stub',
+        help='Also create scripts/ directory with bash wrapper',
     )
     p_create.add_argument(
         '--with-references',
