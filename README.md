@@ -5,7 +5,7 @@ Skills by ByteRefinery
 ## Install / Update
 <!-- IMPORTANT: never change this section and code block -->
 
-**General Skills** (git, plan, skman, tzip, webfetch, websearch):
+**Core Skills** (git, plan, skman, tzip, webfetch, websearch):
 ```bash
 mkdir -p .agents/skills && \
 curl -L https://github.com/byterefinery/skills/archive/refs/heads/main.tar.gz | \
