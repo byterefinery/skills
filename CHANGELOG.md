@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-06-29 — New Skills Batch, Category Reorganization, skman Hardening
+
+### Added
+- **do** — Meta skill for direct execution; perform requested action and stop, no extra output
+- **htm-3-1-1** — JSX-like tagged template syntax for JavaScript (skills-javascript)
+- **pinecone-router-7-6-0** — Router library for Pinecone web frameworks (skills-javascript)
+- **autogluon-1-5-0** — Automated ML for tabular, time series, and multimodal data (skills-models)
+- **chronos-forecasting-2-3-0** — Time series forecasting model (skills-models)
+- **timesfm-2-5-200m-pytorch** — Google Time-Series Foundation Model via PyTorch API (skills-models)
+- **timesfm-2-5-200m-transformers** — Time-Series Foundation Model via HuggingFace Transformers (skills-models)
+- **amazon-chronos-2** — Amazon's zero-shot time series forecasting model (skills-models)
+- **pytorch-2-12-1** — PyTorch deep learning framework with full reference coverage (skills-python)
+- **toto-2-2-0-0** — DataDog's time series forecasting library (skills-python)
+- **transformers-5-12-1** — HuggingFace Transformers library with pipelines, training, and multimodal (skills-python)
+- **uni2ts-2-0-0** — Universal time series modeling framework (skills-python)
+- **datadog-toto-2-0-2-5b** — DataDog's time series model with GluonTS integration (skills-models)
+- **salesforce-moirai-2-0-r-small** — Salesforce's multivariate time series model (skills-models)
+
+### Changed
+- **skman** — scripts/assets are never scaffolded automatically; `--with-scripts` flag required on explicit request
+- **pytorch-2-12-1** — moved code examples from main SKILL.md into reference files for progressive disclosure
+- **amazon-chronos-2** — restructured SKILL.md; moved advanced usage and benchmarking to reference files
+- Renamed `timesfm-200m-transformers-2-5` → `timesfm-2-5-200m-transformers` for consistent naming
+- Renamed `skills-ai-ml` category directory to `skills-models`
+
 ## 2026-06-28 — skman: Remove Trigger Terminology, README Cleanup
 
 ### Changed
