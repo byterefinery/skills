@@ -2,10 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
-## 2026-06-29 — New Skills Batch, Category Reorganization, skman Hardening
+## 2026-06-29 — do Meta Skill
 
 ### Added
 - **do** — Meta skill for direct execution; perform requested action and stop, no extra output
+
+## 2026-06-28 — New Skills Batch, Category Reorganization, skman Hardening
+
+### Added
 - **htm-3-1-1** — JSX-like tagged template syntax for JavaScript (skills-javascript)
 - **pinecone-router-7-6-0** — Router library for Pinecone web frameworks (skills-javascript)
 - **autogluon-1-5-0** — Automated ML for tabular, time series, and multimodal data (skills-models)
