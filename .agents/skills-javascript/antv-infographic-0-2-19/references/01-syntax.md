@@ -36,13 +36,17 @@ The infographic syntax is a concise, YAML-like text format. It is parsed by `par
 
 ### Header Shorthands
 
-```
+```infographic
 # Full form
 infographic list-row-simple-horizontal-arrow
+```
 
+```infographic
 # Using template key
 template list-row-simple-horizontal-arrow
+```
 
+```infographic
 # Bare first line (implicit — works but warns)
 list-row-simple-horizontal-arrow
 ```
@@ -51,12 +55,12 @@ list-row-simple-horizontal-arrow
 
 Deep nesting can be flattened with dotted keys:
 
-```
+```infographic
 # These are equivalent:
 theme.base.text.fill #fff
 ```
 
-```
+```infographic
 theme
   base
     text
@@ -65,7 +69,7 @@ theme
 
 Mix dotted keys with indented blocks:
 
-```
+```infographic
 theme
   base
     shape
@@ -136,7 +140,7 @@ List data represents a group of peer items without ordering. Common for checklis
 
 **Data key:** `lists` (or `items`)
 
-```
+```infographic
 infographic list-grid-compact-card
 data
   title Enterprise Strengths
@@ -172,7 +176,7 @@ theme
 
 **Timeline-style list** (uses `time` field):
 
-```
+```infographic
 infographic list-column-vertical-icon-arrow
 data
   title Enterprise Development Timeline
@@ -208,7 +212,7 @@ Sequence data emphasizes order. Used for timelines, process steps, workflows.
 
 **Data key:** `sequences` (or `items`)
 
-```
+```infographic
 infographic sequence-steps-simple
 data
   title Content Publishing Review Process
@@ -241,7 +245,7 @@ theme
 
 **Descending order:**
 
-```
+```infographic
 infographic sequence-stairs-front-pill-badge
 data
   title Job Level Sequence
@@ -262,7 +266,7 @@ Hierarchy data describes tree structures. Common for org charts, taxonomies, min
 
 **Mind map style** (nested tree):
 
-```
+```infographic
 infographic hierarchy-mindmap-compact-card
 data
   title User Research
@@ -298,7 +302,7 @@ theme
 
 **Org chart style** (multi-root with `items`):
 
-```
+```infographic
 infographic hierarchy-structure
 data
   title System Layered Architecture
@@ -347,7 +351,7 @@ Comparison data highlights side-by-side differences.
 
 **SWOT Analysis** (4 groups with children):
 
-```
+```infographic
 infographic compare-swot
 data
   title SWOT Analysis
@@ -391,7 +395,7 @@ theme
 
 **Binary Comparison (Pros vs Cons):**
 
-```
+```infographic
 infographic compare-binary-horizontal-simple-vs
 data
   title Enterprise Pros and Cons
@@ -419,7 +423,7 @@ theme
 
 **Quadrant (4 items, no children):**
 
-```
+```infographic
 infographic quadrant-quarter-simple-card
 data
   title Risk Control
@@ -449,7 +453,7 @@ Relation data describes node-to-node connections. Used for flowcharts, networks,
 
 **Flowchart with Mermaid-style relations:**
 
-```
+```infographic
 infographic relation-dagre-flow-tb-simple-circle-node
 data
   title Content Review Process
@@ -492,7 +496,7 @@ theme
 
 **System diagnosis flowchart** (with edge labels):
 
-```
+```infographic
 infographic relation-dagre-flow-tb-simple-circle-node
 data
   title System Performance Diagnosis
@@ -575,7 +579,7 @@ theme
 
 **Network with bidirectional edges:**
 
-```
+```infographic
 infographic relation-network-icon-badge
 data
   title Subsidiary Profit Analysis
@@ -645,7 +649,7 @@ theme
 
 **TCP Handshake (interaction diagram):**
 
-```
+```infographic
 infographic relation-dagre-flow-tb-simple-circle-node
 data
   title TCP Three-Way Handshake
@@ -689,7 +693,7 @@ Statistics data showcases metrics using `values`.
 
 **Column chart:**
 
-```
+```infographic
 infographic chart-column-simple
 data
   title Annual Revenue Growth
@@ -717,7 +721,7 @@ theme
 
 **Pie chart:**
 
-```
+```infographic
 infographic chart-pie-plain-text
 data
   title Traffic Sources
@@ -732,7 +736,7 @@ theme
 
 **Word cloud** (items as `label:value` pairs in a single string, or as array):
 
-```
+```infographic
 infographic word-cloud-simple
 data
   values
@@ -775,7 +779,7 @@ The `design` section overrides template defaults.
 
 ### Examples
 
-```
+```infographic
 # Override structure only
 design
   structure list-row
@@ -806,7 +810,7 @@ design
 
 ### Shorthand — Theme Name Only
 
-```
+```infographic
 theme default
 theme dark
 theme hand-drawn
@@ -814,7 +818,7 @@ theme hand-drawn
 
 ### Override Named Theme
 
-```
+```infographic
 theme dark
   colorPrimary #61DDAA
   colorBg #1F1F1F
@@ -826,25 +830,25 @@ theme dark
 
 ### Full Theme Config
 
-```
+```infographic
 theme
-  colorPrimary: '#1677ff'
-  palette: ['#1677ff', '#00C9C9', '#F0884D', '#D580FF']
+  colorPrimary: #1677ff
+  palette: [#1677ff, #00C9C9, #F0884D, #D580FF]
 
   base
     text
-      fill: '#333'
+      fill: #333
       font-family: 'Alibaba PuHuiTi'
     shape
-      fill: '#fff'
-      stroke: '#1677ff'
+      fill: #fff
+      stroke: #1677ff
 
   title
     font-size: 24
-    fill: '#1677ff'
+    fill: #1677ff
   desc
     font-size: 14
-    fill: '#666'
+    fill: #666
 
   item
     label
@@ -852,7 +856,7 @@ theme
     desc
       font-size: 12
     icon
-      fill: '#1677ff'
+      fill: #1677ff
 
   stylize
     type: rough

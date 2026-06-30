@@ -6,7 +6,7 @@ Resources handle icons, illustrations, and other visual assets in infographics. 
 
 In data, the `icon` and `illus` properties configure resources:
 
-```
+```infographic
 data
   items
     - icon <ResourceConfig or string>
@@ -19,7 +19,7 @@ data
 
 Embed SVG directly without any loader registration:
 
-```
+```infographic
 data
   items
     - icon data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg">...</svg>
@@ -29,7 +29,7 @@ data
 
 PNG, JPEG, GIF, etc. as base64:
 
-```
+```infographic
 data
   items
     - icon data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...
@@ -39,7 +39,7 @@ data
 
 Use the `ref:remote` protocol:
 
-```
+```infographic
 data
   items
     - icon ref:remote:svg:https://example.com/icon.svg
@@ -54,7 +54,7 @@ data
 
 Use AntV's icon search service:
 
-```
+```infographic
 data
   items
     - icon ref:search:svg:computer network

@@ -469,7 +469,7 @@ registerTemplate('my-template', {
 
 After registration, custom items and structures are available in the infographic syntax:
 
-```
+```infographic
 infographic my-template
 data
   items
@@ -481,7 +481,7 @@ data
 
 Or with inline design:
 
-```
+```infographic
 template list-row
 design
   item

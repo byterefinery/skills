@@ -342,24 +342,24 @@ const colors = getThemeColors({ colorPrimary: '#1677ff', colorBg: '#fff' });
 
 ### Syntax Form
 
-```
+```infographic
 theme
-  colorPrimary: '#1677ff'
-  palette: ['#1677ff', '#00C9C9', '#F0884D']
+  colorPrimary: #1677ff
+  palette: [#1677ff, #00C9C9, #F0884D]
 
   base
     text
       font-family: 'Alibaba PuHuiTi'
-      fill: '#333'
+      fill: #333
 
   title
     font-size: 28
-    fill: '#1677ff'
+    fill: #1677ff
 
   stylize
-    type: linear-gradient
-    angle: 135
-    colors: ['#667eea', '#764ba2']
+    type: rough
+    roughness: 2
+    bowing: 1
 ```
 
 ## Theme Color Generation
