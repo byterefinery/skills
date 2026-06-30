@@ -52,6 +52,22 @@ The library accepts two input forms:
 npm install @antv/infographic@0.2.19
 ```
 
+### CLI — Validate and Render
+
+```bash
+# Validate syntax (standalone .infographic files or fenced blocks in .md)
+infographic.sh validate file.infographic
+infographic.sh validate notes.md
+infographic.sh validate ./directory/
+
+# Render to SVG
+infographic.sh render -i chart.infographic -o output.svg
+infographic.sh render -i notes.md -d ./output/
+
+# Validate from stdin
+cat chart.infographic | infographic.sh validate -
+```
+
 ## Usage
 
 ### Browser — Syntax Input (Recommended)
@@ -193,6 +209,7 @@ Set `editable: true` to enable selection, dragging, text editing, and zoom. Defa
 
 ## Gotchas
 
+- **Always wrap infographic syntax in ` ```infographic ` code blocks in markdown** — bare infographic syntax outside fenced code blocks is not portable and won't be detected by the validator or renderer. Use the language hint `infographic` on the opening fence.
 - **Data key matters by template type** — list templates expect `lists`, sequence templates expect `sequences`, hierarchy templates expect `root`, comparison templates expect `compares`, relation templates expect `nodes` + `relations`, chart/statistics templates expect `values`. Using the wrong key results in empty rendering.
 - **`value` must be a number for chart items** — when a template uses `usePaletteColor: true` or `showIcon: false` (like `chart-column-simple`), items need a numeric `value` field. Strings won't produce meaningful bars.
 - **Syntax indentation is significant** — the parser uses indent-based nesting (spaces or tabs). A `- label` under `lists` must be indented relative to `lists`. Mixed indentation within one level causes parsing errors.

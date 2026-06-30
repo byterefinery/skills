@@ -15,6 +15,10 @@ All notable changes to this project will be documented in this file.
   zero-shot time series forecasting from Google Research (skills-python)
 
 ### Changed
+- **antv-infographic-0-2-19** — added CLI scripts for syntax validation and SVG
+  rendering via SSR; `infographic.sh validate` and `infographic.sh render`
+  support standalone `.infographic` files, fenced blocks in `.md`, stdin, and
+  recursive directory scanning (skills-javascript)
 - **do** — rewrote overview with punchier headline; tightened usage and gotcha
   sections for brevity (removed redundant phrasing, kept all rules intact)
 
