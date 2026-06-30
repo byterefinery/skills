@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-06-30 — do: Restructured & Tightened
+
+### Changed
+- **do** — rewrote overview with punchier headline; tightened usage and gotcha
+  sections for brevity (removed redundant phrasing, kept all rules intact)
+
 ## 2026-06-29 — do Meta Skill
 
 ### Added
