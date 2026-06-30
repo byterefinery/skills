@@ -19,6 +19,10 @@ All notable changes to this project will be documented in this file.
   rendering via SSR; `infographic.sh validate` and `infographic.sh render`
   support standalone `.infographic` files, fenced blocks in `.md`, stdin, and
   recursive directory scanning (skills-javascript)
+- **antv-infographic-0-2-19** — tagged all 32 infographic syntax code blocks
+  with ` ```infographic ` language hint across 4 reference files; fixed parser
+  errors (quoted color values, invalid stylize type) found during validation
+  with the official `parseSyntax()` parser (skills-javascript)
 - **do** — rewrote overview with punchier headline; tightened usage and gotcha
   sections for brevity (removed redundant phrasing, kept all rules intact)
 
