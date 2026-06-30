@@ -102,8 +102,8 @@ function formatWarning(warn) {
 // --- File system helpers ---
 
 const MARKDOWN_EXTENSIONS = /\.(md|markdown|mdx)$/i;
-const INFOGRAPHIC_EXTENSIONS = /\.(infographic|info|ifgc)$/i;
-const MATCHING_EXTENSIONS = /\.(md|markdown|mdx|infographic|info|ifgc)$/i;
+const INFOGRAPHIC_EXTENSIONS = /\.ifgc$/i;
+const MATCHING_EXTENSIONS = /\.(md|markdown|mdx|ifgc)$/i;
 
 /**
  * Find matching files in a directory recursively.
@@ -142,7 +142,7 @@ Options:
   -h, --help    Show this help message
 
 Arguments:
-  <file>       Single .md, .markdown, .mdx, .infographic, .info, or .ifgc file
+  <file>       Single .ifgc file or .md with fenced code blocks (language hint: infographic)
   <directory>  Recursively validate all matching files
   -            Read infographic syntax from stdin
 
@@ -292,7 +292,7 @@ async function cmdValidate(args) {
             }
 
         } else if (INFOGRAPHIC_EXTENSIONS.test(filePath)) {
-            // Standalone .infographic file — entire content is one spec
+            // Standalone .ifgc file — entire content is one spec
             const content = await Bun.file(filePath).text();
             const result = validateSyntax(content);
 
@@ -425,7 +425,7 @@ Usage: infographic.sh render [OPTIONS]
 Convert infographic syntax to SVG (and optionally PNG).
 
 Options:
-  -i, --input <file>    Input file (.infographic, .info, .ifgc, or .md with fenced blocks) [required]
+  -i, --input <file>    Input file (.ifgc or .md with fenced code blocks; language hint: infographic) [required]
   -o, --output <path>   Output file path (.svg or .png). Default: same name as input with .svg extension
   -d, --dir <dir>       Output directory (used with -i for directories or multiple blocks)
   -b, --block <n>       Render only block N from markdown files (1-indexed, default: all)
@@ -434,10 +434,10 @@ Options:
   -h, --help            Show this help message
 
 Examples:
-  infographic.sh render -i chart.infographic
-  infographic.sh render -i chart.infographic -o output.svg
+  infographic.sh render -i chart.ifgc
+  infographic.sh render -i chart.ifgc -o output.svg
   infographic.sh render -i notes.md -d ./output/
-  infographic.sh render -i diagram.infographic -o diagram.png
+  infographic.sh render -i diagram.ifgc -o diagram.png
 
 Exit codes:
   0  Success

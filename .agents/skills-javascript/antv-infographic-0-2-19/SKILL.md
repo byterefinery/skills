@@ -66,8 +66,8 @@ Requires [Bun](https://bun.sh) runtime. The `bun` installer resolves `@antv/info
 Uses the **official `parseSyntax()`** from `@antv/infographic` — errors and warnings are exactly what the library produces, not a custom approximation.
 
 ```bash
-# Validate a standalone infographic file
-infographic.sh validate chart.infographic
+# Validate a standalone .ifgc file
+infographic.sh validate chart.ifgc
 
 # Validate infographic blocks inside a markdown file
 infographic.sh validate notes.md
@@ -76,17 +76,17 @@ infographic.sh validate notes.md
 infographic.sh validate ./docs/
 
 # Validate from stdin
-cat chart.infographic | infographic.sh validate -
+cat chart.ifgc | infographic.sh validate -
 ```
 
 **Input modes:**
 
 | Input | Behavior |
 |---|---|
-| `.infographic` / `.info` / `.ifgc` | Entire file is one infographic spec |
-| `.md` / `.mdx` / `.markdown` | Extracts ````infographic` fenced blocks, validates each independently |
+| `.ifgc` | Entire file is one infographic spec |
+| `.md` / `.mdx` / `.markdown` | Extracts ````infographic` fenced blocks; a single file can contain many blocks, each validated independently |
 | `-` (stdin) | Reads raw infographic syntax from stdin |
-| directory | Recursively finds `.md`, `.mdx`, `.markdown`, `.infographic`, `.info`, `.ifgc` files |
+| directory | Recursively finds `.md`, `.mdx`, `.markdown`, `.ifgc` files |
 
 **Options:**
 
@@ -103,11 +103,11 @@ cat chart.infographic | infographic.sh validate -
 Uses **`renderToString()`** from `@antv/infographic/ssr` — server-side rendering via `linkedom` (virtual DOM, no browser needed). Each block is **validated first**; invalid blocks are skipped with error output.
 
 ```bash
-# Render a standalone file to SVG (output: chart.svg)
-infographic.sh render -i chart.infographic
+# Render a standalone .ifgc file to SVG (output: chart.svg)
+infographic.sh render -i chart.ifgc
 
 # Render to a specific path
-infographic.sh render -i chart.infographic -o output.svg
+infographic.sh render -i chart.ifgc -o output.svg
 
 # Render all infographic blocks from a markdown file into a directory
 infographic.sh render -i notes.md -d ./output/
@@ -116,14 +116,14 @@ infographic.sh render -i notes.md -d ./output/
 infographic.sh render -i notes.md -b 2 -o block2.svg
 
 # Override dimensions
-infographic.sh render -i chart.infographic -w 800 -H 600
+infographic.sh render -i chart.ifgc -w 800 -H 600
 ```
 
 **Options:**
 
 | Flag | Effect |
 |---|---|
-| `-i`, `--input` | Input file (required) — `.infographic`, `.info`, `.ifgc`, or `.md` with fenced blocks |
+| `-i`, `--input` | Input file (required) — `.ifgc` or `.md` with ````infographic` fenced blocks |
 | `-o`, `--output` | Output file path (`.svg` or `.png`). Default: same name as input with `.svg` |
 | `-d`, `--dir` | Output directory (creates if missing). Used with multi-block inputs |
 | `-b`, `--block` | Render only block N from markdown files (1-indexed) |
