@@ -102,8 +102,8 @@ function formatWarning(warn) {
 // --- File system helpers ---
 
 const MARKDOWN_EXTENSIONS = /\.(md|markdown|mdx)$/i;
-const INFOGRAPHIC_EXTENSIONS = /\.(infographic|info)$/i;
-const MATCHING_EXTENSIONS = /\.(md|markdown|mdx|infographic|info)$/i;
+const INFOGRAPHIC_EXTENSIONS = /\.(infographic|info|ifgc)$/i;
+const MATCHING_EXTENSIONS = /\.(md|markdown|mdx|infographic|info|ifgc)$/i;
 
 /**
  * Find matching files in a directory recursively.
@@ -142,7 +142,7 @@ Options:
   -h, --help    Show this help message
 
 Arguments:
-  <file>       Single .md, .markdown, .mdx, .infographic, or .info file
+  <file>       Single .md, .markdown, .mdx, .infographic, .info, or .ifgc file
   <directory>  Recursively validate all matching files
   -            Read infographic syntax from stdin
 
@@ -425,7 +425,7 @@ Usage: infographic.sh render [OPTIONS]
 Convert infographic syntax to SVG (and optionally PNG).
 
 Options:
-  -i, --input <file>    Input file (.infographic, .info, or .md with fenced blocks) [required]
+  -i, --input <file>    Input file (.infographic, .info, .ifgc, or .md with fenced blocks) [required]
   -o, --output <path>   Output file path (.svg or .png). Default: same name as input with .svg extension
   -d, --dir <dir>       Output directory (used with -i for directories or multiple blocks)
   -b, --block <n>       Render only block N from markdown files (1-indexed, default: all)

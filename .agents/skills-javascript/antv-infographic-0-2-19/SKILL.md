@@ -52,21 +52,94 @@ The library accepts two input forms:
 npm install @antv/infographic@0.2.19
 ```
 
-### CLI — Validate and Render
+### CLI Scripts — Validate and Render
+
+The skill ships with two scripts in `scripts/`:
+
+- **`infographic.sh`** — thin Bash wrapper that delegates to `_infographic.js` via `bun`
+- **`_infographic.js`** — Bun script importing `@antv/infographic` (parser) and `@antv/infographic/ssr` (renderer)
+
+Requires [Bun](https://bun.sh) runtime. The `bun` installer resolves `@antv/infographic` at runtime.
+
+#### Validation
+
+Uses the **official `parseSyntax()`** from `@antv/infographic` — errors and warnings are exactly what the library produces, not a custom approximation.
 
 ```bash
-# Validate syntax (standalone .infographic files or fenced blocks in .md)
-infographic.sh validate file.infographic
-infographic.sh validate notes.md
-infographic.sh validate ./directory/
+# Validate a standalone infographic file
+infographic.sh validate chart.infographic
 
-# Render to SVG
-infographic.sh render -i chart.infographic -o output.svg
-infographic.sh render -i notes.md -d ./output/
+# Validate infographic blocks inside a markdown file
+infographic.sh validate notes.md
+
+# Recursively validate all matching files in a directory
+infographic.sh validate ./docs/
 
 # Validate from stdin
 cat chart.infographic | infographic.sh validate -
 ```
+
+**Input modes:**
+
+| Input | Behavior |
+|---|---|
+| `.infographic` / `.info` / `.ifgc` | Entire file is one infographic spec |
+| `.md` / `.mdx` / `.markdown` | Extracts ````infographic` fenced blocks, validates each independently |
+| `-` (stdin) | Reads raw infographic syntax from stdin |
+| directory | Recursively finds `.md`, `.mdx`, `.markdown`, `.infographic`, `.info`, `.ifgc` files |
+
+**Options:**
+
+| Flag | Effect |
+|---|---|
+| `-q`, `--quiet` | Only output errors (suppress valid-file markers) |
+| `-w`, `--warnings` | Also display parser warnings (default: errors only) |
+| `--json` | Machine-readable JSON output |
+
+**Exit codes:** 0 = all valid (or no blocks found), 1 = syntax errors, 2 = usage error.
+
+#### Rendering
+
+Uses **`renderToString()`** from `@antv/infographic/ssr` — server-side rendering via `linkedom` (virtual DOM, no browser needed). Each block is **validated first**; invalid blocks are skipped with error output.
+
+```bash
+# Render a standalone file to SVG (output: chart.svg)
+infographic.sh render -i chart.infographic
+
+# Render to a specific path
+infographic.sh render -i chart.infographic -o output.svg
+
+# Render all infographic blocks from a markdown file into a directory
+infographic.sh render -i notes.md -d ./output/
+
+# Render only block 2 from a markdown file
+infographic.sh render -i notes.md -b 2 -o block2.svg
+
+# Override dimensions
+infographic.sh render -i chart.infographic -w 800 -H 600
+```
+
+**Options:**
+
+| Flag | Effect |
+|---|---|
+| `-i`, `--input` | Input file (required) — `.infographic`, `.info`, `.ifgc`, or `.md` with fenced blocks |
+| `-o`, `--output` | Output file path (`.svg` or `.png`). Default: same name as input with `.svg` |
+| `-d`, `--dir` | Output directory (creates if missing). Used with multi-block inputs |
+| `-b`, `--block` | Render only block N from markdown files (1-indexed) |
+| `-w`, `--width` | SVG width in px (default: auto from template) |
+| `-H`, `--height` | SVG height in px (default: auto from template) |
+
+**Output naming:**
+
+| Scenario | Output path |
+|---|---|
+| `-o output.svg` with single block | Exact path given |
+| `-o output.svg` with multiple blocks | `basename-blockN.svg` in same directory |
+| `-d ./output/` | `basename.svg` (or `basename-blockN.svg`) inside the directory |
+| No output flags | `basename.svg` next to input file |
+
+**Exit codes:** 0 = all rendered, 1 = one or more failures, 2 = usage error.
 
 ## Usage
 
