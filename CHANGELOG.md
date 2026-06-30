@@ -15,6 +15,20 @@ All notable changes to this project will be documented in this file.
   zero-shot time series forecasting from Google Research (skills-python)
 
 ### Changed
+- **antv-infographic-0-2-19** — cloned official @antv/infographic 0.2.19 repo, extracted
+  and validated all 41 infographic code blocks from site docs; created
+  `references/06-official-examples.md` with every example organized by type
+  (list, sequence, hierarchy, compare, relation, statistics, syntax patterns,
+  design, theme, data/resource), each with source file, validation status,
+  render size, and notes; found 1 deprecated template
+  (`quadrant-quarter-simple-card` → `compare-quadrant-quarter-simple-card`)
+  (skills-javascript)
+- **antv-infographic-0-2-19** — moved `## Usage` section (browser API, SSR,
+  streaming, export, events, update/destroy, custom resource loader, editor)
+  to `references/07-usage.md`; replaced with 6 concise ````infographic`
+  code blocks in SKILL.md — one per infographic type (list, sequence,
+  hierarchy, compare, relation, statistics) — for immediate reference
+  (skills-javascript)
 - **antv-infographic-0-2-19** — narrowed supported extensions to `.ifgc`
   (standalone spec) and `.md` (fenced code blocks) only; removed
   `.infographic` and `.info` from scripts and docs; fixed JS template

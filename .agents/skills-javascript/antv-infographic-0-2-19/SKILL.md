@@ -143,142 +143,121 @@ infographic.sh render -i chart.ifgc -w 800 -H 600
 
 ## Usage
 
-### Browser — Syntax Input (Recommended)
+### List — Checklist, Features, Rankings
 
-```html
-<div id="container"></div>
-<script type="module">
-import { Infographic } from '@antv/infographic';
-
-const chart = new Infographic({ container: '#container' });
-
-chart.render(`
-infographic list-row-simple-horizontal-arrow
+```infographic
+infographic list-grid-compact-card
 data
-  title Project Progress
+  title Project Milestones
   lists
-    - label Step 1
-      desc Start
-    - label Step 2
-      desc In Progress
-    - label Step 3
-      desc Complete
-`);
-</script>
+    - label Design
+      desc UI/UX completed
+      value 100
+    - label Development
+      desc In progress
+      value 65
+    - label Testing
+      desc Pending
+      value 20
+theme
+  palette antv
 ```
 
-### Browser — JS Object Input
+### Sequence — Steps, Timeline, Workflow
 
-```ts
-import { Infographic } from '@antv/infographic';
-
-const chart = new Infographic({
-  container: '#container',
-  width: '100%',
-  height: 600,
-  editable: true,
-});
-
-chart.render({
-  template: 'list-row-simple-horizontal-arrow',
-  data: {
-    lists: [
-      { label: 'Step 1', desc: 'Start' },
-      { label: 'Step 2', desc: 'In Progress' },
-      { label: 'Step 3', desc: 'Complete' },
-    ],
-  },
-});
+```infographic
+infographic sequence-steps-simple
+data
+  title Deployment Pipeline
+  sequences
+    - label Build
+      desc Compile and bundle
+    - label Test
+      desc Run CI suite
+    - label Deploy
+      desc Push to production
+theme
+  palette antv
 ```
 
-### Streaming Rendering
+### Hierarchy — Org Chart, Mindmap, Taxonomy
 
-The syntax parser is fault-tolerant — render partial output as AI streams tokens:
-
-```ts
-let buffer = '';
-for (const chunk of aiChunks) {
-  buffer += chunk;
-  chart.render(buffer);
-}
+```infographic
+infographic hierarchy-structure
+data
+  title Tech Stack
+  root
+    label Frontend
+    children
+      - label React
+      - label Vue
+    label Backend
+    children
+      - label Node.js
+      - label Go
+theme
+  palette antv
 ```
 
-### SSR — Server-Side Render to SVG String
+### Compare — SWOT, Pros/Cons, Quadrant
 
-```ts
-import { renderToString } from '@antv/infographic/ssr';
+```infographic
+infographic compare-swot
+data
+  title Plan Comparison
+  compares
+    - label Plan A
+      value 75
+      children
+        - label Faster delivery
+        - label Lower cost
+    - label Plan B
+      value 90
+      children
+        - label Higher quality
+        - label Better scalability
+theme
+  palette antv
+```
 
-const svgString = await renderToString(`
+### Relation — Flowchart, Network, System Diagram
+
+```infographic
+infographic relation-dagre-flow-tb-simple-circle-node
+data
+  title Request Flow
+  nodes
+    - id client
+      label Client
+    - id api
+      label API Server
+    - id db
+      label Database
+  relations
+    client -> api
+    api -> db
+theme
+  palette antv
+```
+
+### Statistics — Column Chart, Pie, Word Cloud
+
+```infographic
 infographic chart-column-simple
 data
-  title Sales
+  title Monthly Revenue
   values
-    - label Q1
+    - label Jan
       value 120
-    - label Q2
-      value 200
-    - label Q3
+    - label Feb
       value 180
-    - label Q4
+    - label Mar
       value 250
-`);
+theme
+  palette antv
 ```
 
-### Export
-
-```ts
-// After render() and in browser
-const svgDataUrl = await chart.toDataURL({ type: 'svg' });
-const pngDataUrl = await chart.toDataURL({ type: 'png', dpr: 2 });
-```
-
-### Events
-
-```ts
-chart.on('rendered', ({ node, options }) => {
-  console.log('SVG rendered', node);
-});
-
-chart.on('loaded', ({ node, options }) => {
-  console.log('All resources loaded', node);
-});
-
-chart.on('error', (errors) => {
-  console.error('Render errors', errors);
-});
-```
-
-### Update / Destroy
-
-```ts
-// Merge new options into existing
-chart.update({ data: { lists: newItems } });
-
-// Full replacement
-chart.render(newOptions);
-
-// Cleanup
-chart.destroy();
-```
-
-### Custom Resource Loader
-
-Register a loader to fetch icons/illustrations from your own service:
-
-```ts
-import { registerResourceLoader, loadSVGResource } from '@antv/infographic';
-
-registerResourceLoader(async (config) => {
-  const { data, scene = 'icon' } = config;
-  const response = await fetch(`https://api.iconify.design/${data}.svg`);
-  const svgText = await response.text();
-  return loadSVGResource(svgText);
-});
-```
-
-### Editor (Built-in)
-
-Set `editable: true` to enable selection, dragging, text editing, and zoom. Default plugins: `EditBar`, `ResizeElement`, `ResetViewBox`. Default interactions: `DragCanvas`, `DblClickEditText`, `BrushSelect`, `ClickSelect`, `DragElement`, `HotkeyHistory`, `ZoomWheel`, `SelectHighlight`.
+See [07-usage](references/07-usage.md) for browser API, SSR, streaming, export, events, and editor.
 
 ## Gotchas
 
@@ -308,3 +287,5 @@ Set `editable: true` to enable selection, dragging, text editing, and zoom. Defa
 - [03-jsx-custom-components](references/03-jsx-custom-components.md) — JSX system: primitive nodes, built-in components, layout system, custom items/structures
 - [04-themes-stylize](references/04-themes-stylize.md) — Theme system, palettes, gradients, patterns, rough stylization, fonts
 - [05-resources](references/05-resources.md) — Resource loading: built-in protocols, custom loaders, helper functions, best practices
+- [06-official-examples](references/06-official-examples.md) — All 41 examples from the official @antv/infographic 0.2.19 repo docs, validated and rendered
+- [07-usage](references/07-usage.md) — Browser API, SSR, streaming rendering, export, events, custom resource loader, built-in editor
