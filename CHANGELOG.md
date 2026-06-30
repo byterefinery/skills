@@ -2,7 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
-## 2026-06-30 — do: Restructured & Tightened
+## 2026-06-30 — New Skill, do Restructured
+
+### Added
+- **timesfm-2-0-1** — TimesFM 2.0.1 pretrained decoder-only foundation model for
+  zero-shot time series forecasting from Google Research (skills-python)
 
 ### Changed
 - **do** — rewrote overview with punchier headline; tightened usage and gotcha
