@@ -15,6 +15,11 @@ All notable changes to this project will be documented in this file.
   zero-shot time series forecasting from Google Research (skills-python)
 
 ### Changed
+- **antv-infographic-0-2-19** — narrowed supported extensions to `.ifgc`
+  (standalone spec) and `.md` (fenced code blocks) only; removed
+  `.infographic` and `.info` from scripts and docs; fixed JS template
+  literal breakage from triple-backtick literals in help text
+  (skills-javascript)
 - **antv-infographic-0-2-19** — expanded SKILL.md CLI documentation: added
   script architecture (two-file setup, Bun runtime), validation details
   (`parseSyntax()` source, input modes, options, exit codes), rendering
