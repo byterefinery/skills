@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 ## 2026-06-30 — New Skill, do Restructured
 
 ### Added
+- **open-meteo-1-5-3** — R client for the Open-Meteo Weather API; forecast,
+  historical, climate, air quality, marine, snow, and alerts endpoints with
+  R-specific data handling (data frames, tibbles, ggplot2) (skills-general)
+- **openmeteo-requests-1-7-2** — Python client for the Open-Meteo Weather API
+  using FlatBuffers for zero-copy data transfer; sync/async clients, NumPy/
+  Pandas/Polars integration, caching, retries (skills-python)
 - **timesfm-2-0-1** — TimesFM 2.0.1 pretrained decoder-only foundation model for
   zero-shot time series forecasting from Google Research (skills-python)
 
