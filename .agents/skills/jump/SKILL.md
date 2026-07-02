@@ -52,6 +52,10 @@ continue
 
 **Loops require explicit exit conditions** — a jump back to a earlier label creates a loop. The label's instructions or a subsequent condition must eventually produce `continue` (not jump) or an exit, otherwise the loop runs indefinitely.
 
+### Unknown Labels
+
+If a loop jumps to a label not yet defined, assume it may be defined in the future. Output `noop` (no operation) and continue with execution or agent/harness prompt logic.
+
 ### Condition Types
 
 - **Math** (write and exec inline script) — `attempts < 3`, `score >= 90`, `count > max + 10`
