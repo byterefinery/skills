@@ -24,7 +24,7 @@ Evaluates a condition and, when satisfied, redirects processing to a named label
 When loaded without a condition, output exactly:
 
 ```
-jump activated
+jump skill activated
 ```
 
 Skill is ready. No action until a condition is encountered.

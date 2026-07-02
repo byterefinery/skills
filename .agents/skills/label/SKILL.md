@@ -12,10 +12,14 @@ metadata:
 
 Creates a named marker at the current point in the conversation. Other skills, messages, or instructions can reference it by name to anchor context, restore state, or branch logic. Think of it as a C/C++ label — purely a reference point, no behavior attached.
 
+Labels are resolved in order — nearest matching label wins. They carry no data, only named position.
+
 ## Usage
 
-Set a label by naming it `label: NAME` like: `label: checkpoint-alpha` or `label: 123-xyz-ABC`.
+### Activateion
 
-It will just reply with `label: NAME` were `NAME` is what was give to skill.
+When invoked without a label name, output `label skill activated`.
 
-Labels are resolved in order — nearest matching label wins. They carry no data, only named position.
+### Definition of Label
+
+Define a label using `LABEL_NAME`. Skill outputs exactly `label: LABEL_NAME`.
