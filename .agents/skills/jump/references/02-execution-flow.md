@@ -9,5 +9,7 @@
    e. Clean up script
 3. **Free-form**: evaluate via LLM judgment against current context
 4. **Output**:
-   - Condition met → write exactly `jump LABEL_NAME`, stop
+   - Condition met → write exactly `jump LABEL_NAME`, yield to harness
    - Condition not met → write exactly `continue`, let agent/harness/LLM decide next step
+
+After `jump LABEL_NAME` is emitted, harness resolves the label, injects context from that point, and resumes execution. Agent does not stop — it waits for harness to continue.
