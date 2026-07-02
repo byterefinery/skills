@@ -36,37 +36,13 @@ jump <label-name> [if <condition>]
 
 ### Condition Types
 
-#### 1. Mathematical — evaluated via script
+| Type | Eval | Examples |
+|---|---|---|
+| **Math** | script | `attempts < 3`, `score >= 90`, `count > max + 10` |
+| **Logic** | script | `status == "failed"`, `ready && connected`, `not in_whitelist` |
+| **Free-form** | LLM | `output is too verbose`, `user seems confused`, `performance is a concern` |
 
-Numeric comparisons and arithmetic. Variables may appear for the first time in the condition; extract values from context, write a script, run it.
-
-```
-jump label-retry if attempts < 3
-jump label-done if score >= 90
-jump label-overflow if count > max + 10
-```
-
-#### 2. Logical — evaluated via script
-
-Boolean ops, equality, membership, string comparisons. Same script mechanism.
-
-```
-jump label-error-handling if status == "failed"
-jump label-next-step if ready && connected
-jump label-skip if not in_whitelist
-jump label-fallback if method == "a" || method == "b"
-```
-
-#### 3. Free-form — evaluated by LLM (fallback only)
-
-Subjective or context-dependent conditions. These are the ONLY conditions the LLM evaluates directly.
-
-```
-jump label-rewrite if the output is too verbose
-jump label-clarify if the user seems confused
-jump label-optimize if performance is a concern
-jump label-summary if we have covered enough ground
-```
+Math/logic → extract vars from context, write script, execute, exit 0 = met. Free-form → LLM judgment (fallback only).
 
 ### Execution Flow
 
