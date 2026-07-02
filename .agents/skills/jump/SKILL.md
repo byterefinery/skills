@@ -10,27 +10,23 @@ metadata:
 
 ## Overview
 
-Jump is a conditional branching meta skill. It evaluates a condition and, when satisfied, redirects processing to a named label created by the `label` skill. Think of it as a natural-language `goto` with a guard clause — like `if (condition) goto label` in C/C++.
-
-Jump works alongside `label` which places named markers in the conversation. Jump evaluates whether to reach them.
+Conditional branching meta skill. Evaluates a condition and, when satisfied, redirects processing to a named label placed by the `label` skill. Natural-language `goto` with a guard — `if (condition) goto label`.
 
 ## Core Principle: Deterministic by Default
 
-**Mathematical and logical conditions are NEVER evaluated by the LLM.** They are compiled into a small script, executed, and the exit code determines the jump. This guarantees deterministic, reproducible results.
-
-Only **free-form natural language conditions** (vague, subjective, intent-based) fall back to LLM judgment.
+**Math/logic conditions are NEVER evaluated by the LLM.** They are compiled into a script, executed, and the exit code determines the jump. Only **free-form natural language conditions** (subjective, intent-based) fall back to LLM judgment.
 
 ## Usage
 
 ### Activation
 
-When the jump skill is loaded without any prompt or condition to evaluate, it outputs:
+When loaded without a condition, output exactly:
 
 ```
 jump activated
 ```
 
-This signals the skill is ready. No action is taken until a condition is encountered.
+Skill is ready. No action until a condition is encountered.
 
 ### Syntax
 
@@ -42,7 +38,7 @@ jump <label-name> [if <condition>]
 
 #### 1. Mathematical — evaluated via script
 
-Numeric comparisons and arithmetic expressions. Variables are mentioned by the user — they may appear for the first time in the condition itself. The agent extracts their values from context, writes a script, and runs it.
+Numeric comparisons and arithmetic. Variables may appear for the first time in the condition; extract values from context, write a script, run it.
 
 ```
 jump label-retry if attempts < 3
@@ -52,7 +48,7 @@ jump label-overflow if count > max + 10
 
 #### 2. Logical — evaluated via script
 
-Boolean operators, equality, membership, string comparisons. Same script mechanism.
+Boolean ops, equality, membership, string comparisons. Same script mechanism.
 
 ```
 jump label-error-handling if status == "failed"
@@ -63,7 +59,7 @@ jump label-fallback if method == "a" || method == "b"
 
 #### 3. Free-form — evaluated by LLM (fallback only)
 
-Natural language descriptions that are inherently subjective or context-dependent. These are the ONLY conditions the LLM evaluates directly.
+Subjective or context-dependent conditions. These are the ONLY conditions the LLM evaluates directly.
 
 ```
 jump label-rewrite if the output is too verbose
@@ -74,26 +70,25 @@ jump label-summary if we have covered enough ground
 
 ### Execution Flow
 
-1. **Classify the condition**: Is it deterministic (math/logic) or free-form (natural language)?
-2. **For deterministic conditions**:
-   a. Extract variable values from the current context — variables may be mentioned for the first time in the condition itself
-   b. Write a condition script to `/tmp/jump_cond_<label>_<timestamp>.sh`
-   c. Execute the script via `bash`
-   d. Exit code 0 → condition satisfied
-   e. Exit code non-zero → condition not met
-   f. Clean up the script file
-3. **For free-form conditions**: Evaluate using LLM judgment against current context
-4. **Output the result**:
-   - Condition satisfied → write exactly `jump LABEL_NAME` and stop
-   - Condition not met → write exactly `continue` and let the agent, harness, or LLM decide what to do next
+1. **Classify**: deterministic (math/logic) or free-form (natural language)?
+2. **Deterministic**:
+   a. Extract variable values from context — variables may be introduced in the condition itself
+   b. Write script to `/tmp/jump_cond_<label>_<timestamp>.sh`
+   c. Execute via `bash`
+   d. Exit 0 → condition met; non-zero → not met
+   e. Clean up script
+3. **Free-form**: evaluate via LLM judgment against current context
+4. **Output**:
+   - Condition met → write exactly `jump LABEL_NAME`, stop
+   - Condition not met → write exactly `continue`, let agent/harness/LLM decide next step
 
 ### Jump Trigger
 
-The `jump LABEL_NAME` output is the activation signal. When this appears anywhere in a generated message:
+`jump LABEL_NAME` is the activation signal. When it appears in generated output:
 
-1. The current agent or harness locates the matching `label LABEL_NAME` marker in the conversation
-2. If the label does not exist → output exactly `error: LABEL_NAME does not exist`
-3. If found, prompt processing resumes from that point onward
-4. Everything between the jump and the label is skipped
+1. Agent/harness locates matching `label LABEL_NAME` marker in conversation
+2. Label not found → output exactly `error: LABEL_NAME does not exist`
+3. Label found → processing resumes from that point onward
+4. Everything between jump and label is skipped
 
-This means `jump LABEL_NAME` can appear as the direct result of a condition evaluation, or be emitted organically during conversation — either way, it triggers an immediate jump to the labeled point.
+`jump LABEL_NAME` can result from condition evaluation or be emitted organically — either way, it triggers an immediate jump.
