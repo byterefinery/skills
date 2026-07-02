@@ -19,7 +19,7 @@ Evaluates a condition and, when satisfied, redirects processing to a named label
 
 ## Core Principle: Execution Never Stops
 
-After emitting `jump LABEL_NAME`, the agent does NOT halt. It immediately recalls the label's context from conversation history and continues generating from that point. There is no pause, no waiting for external intervention. This is critical for loops — the agent iterates until the exit condition is met, all within a single generation pass.
+After emitting `jump: LABEL_NAME`, the agent does NOT halt. It immediately recalls the label's context from conversation history and continues generating from that point. There is no pause, no waiting for external intervention. This is critical for loops — the agent iterates until the exit condition is met, all within a single generation pass.
 
 ## Usage
 
