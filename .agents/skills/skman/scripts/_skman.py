@@ -653,30 +653,56 @@ def cmd_create(args):
     print(f"create: scaffolded skill '{dir_name}' at {skill_md_path}")
 
 
-def cmd_validate(args):
-    """Validate a SKILL.md file against spec rules.
+def _discover_skill_dirs(collection_dir):
+    """Find all subdirectories in collection_dir that contain a SKILL.md.
 
-    Every check is reported as PASS / WARN / ERROR in a single enumerated list:
-      1.  [PASS] …
-      2.  [PASS] …
-      3.  [WARN] …
-      4.  [ERROR] …
+    Returns a sorted list of absolute paths to the skill directories.
     """
-    target = args.path
-    skill_md = _find_skill_md(target)
+    skills = []
+    if not os.path.isdir(collection_dir):
+        return skills
+    for entry in sorted(os.listdir(collection_dir)):
+        candidate = os.path.join(collection_dir, entry)
+        if not os.path.isdir(candidate):
+            continue
+        skill_md = os.path.join(candidate, 'SKILL.md')
+        if os.path.isfile(skill_md):
+            skills.append(candidate)
+    return skills
 
+
+def _is_collection_dir(path):
+    """Check if path is a collection directory (contains subdirs with SKILL.md).
+
+    Returns True if the path is a directory containing at least one subdirectory
+    with a SKILL.md, and does NOT itself have a SKILL.md at its root.
+    """
+    abs_path = os.path.abspath(path)
+    if not os.path.isdir(abs_path):
+        return False
+    # If this dir itself has SKILL.md, it's a single skill, not a collection
+    if os.path.isfile(os.path.join(abs_path, 'SKILL.md')):
+        return False
+    # Check if any subdirectory has SKILL.md
+    return len(_discover_skill_dirs(abs_path)) > 0
+
+
+def _validate_single_skill(skill_path, strict):
+    """Validate a single skill. Returns (results, error_count, warn_count).
+
+    results: list of (label, message) where label in {"PASS", "WARN", "ERROR"}
+    """
+    skill_md = _find_skill_md(skill_path)
     if skill_md is None:
-        print(f"validate: no SKILL.md found at '{target}'", file=sys.stderr)
-        sys.exit(1)
+        return [], 1, 0  # Can't find SKILL.md — treated as 1 error
 
     with open(skill_md, 'r') as f:
         content = f.read()
 
     fm, body = _parse_frontmatter(content)
 
-    results = []  # list of (label, message) where label in {"PASS", "WARN", "ERROR"}
+    results = []
 
-    # Derive directory info unconditionally (needed by body checks too)
     skill_dir = os.path.dirname(skill_md)
     dir_basename = os.path.basename(skill_dir)
     dir_name, dir_version = _strip_version_suffix(dir_basename)
@@ -719,11 +745,9 @@ def cmd_validate(args):
                 results.append(("WARN", f"metadata: {w}"))
             if not meta_warnings:
                 results.append(("PASS", "metadata structure is valid"))
-        # else: metadata absent — that's fine, it's optional
 
         # Name vs directory basename consistency
         fm_name = fm.get('name', '')
-        # Accept frontmatter name as either base name ('demo-skill') or full name ('demo-skill-2-4-1')
         name_matches = (fm_name == dir_basename)
         if fm_name and not name_matches:
             results.append(
@@ -773,8 +797,6 @@ def cmd_validate(args):
              f"body must start with a level-1 heading (found: '{first_content_line[:60]}...')")
         )
     else:
-        # Validate H1 heading format: must be '# <name>' or '# <name> <version>'
-        # Derive expected heading from directory structure, not frontmatter name
         h1_text = first_content_line[2:]  # strip '# '
         expected_h1 = dir_name
         if dir_version:
@@ -823,15 +845,21 @@ def cmd_validate(args):
     if not rf_errors and not rf_warnings:
         results.append(("PASS", "reference files follow NN-topic.md naming (or absent)"))
 
-    # --- Report ---
+    error_count = sum(1 for label, _ in results if label == "ERROR")
+    warn_count = sum(1 for label, _ in results if label == "WARN")
+
+    return results, error_count, warn_count
+
+
+def _print_single_results(results, strict):
+    """Print enumerated results for a single skill."""
     error_count = sum(1 for label, _ in results if label == "ERROR")
     warn_count = sum(1 for label, _ in results if label == "WARN")
 
     passed = error_count == 0
-    if args.strict and warn_count > 0:
+    if strict and warn_count > 0:
         passed = False
 
-    # Print header
     if error_count:
         print("validate: FAILED")
     elif warn_count:
@@ -839,7 +867,6 @@ def cmd_validate(args):
     else:
         print("validate: OK")
 
-    # Print all checks enumerated: PASSes first, then WARNs, then ERRORs
     passes = [(i, msg) for i, (label, msg) in enumerate(results, 1) if label == "PASS"]
     warns = [(i, msg) for i, (label, msg) in enumerate(results, 1) if label == "WARN"]
     errors_list = [(i, msg) for i, (label, msg) in enumerate(results, 1) if label == "ERROR"]
@@ -855,7 +882,106 @@ def cmd_validate(args):
         counter += 1
         print(f"  {counter}. [ERROR] {msg}")
 
-    sys.exit(0 if passed else 1)
+    return 0 if passed else 1
+
+
+def cmd_validate(args):
+    """Validate a SKILL.md file or a collection of skills against spec rules.
+
+    Supports three modes:
+      1. Single skill (path to skill dir or SKILL.md file)
+      2. Collection directory (path to dir containing skill subdirs)
+      3. Explicit collection with --all flag on a dir
+    """
+    target = args.path
+    strict = args.strict
+
+    # Resolve path
+    abs_target = os.path.abspath(target)
+
+    # Determine mode: single skill vs collection
+    if os.path.isfile(abs_target):
+        # Direct file path — single skill mode
+        skill_md = _find_skill_md(abs_target)
+        if skill_md is None:
+            print(f"validate: no SKILL.md found at '{target}'", file=sys.stderr)
+            sys.exit(1)
+        results, error_count, warn_count = _validate_single_skill(abs_target, strict)
+        sys.exit(_print_single_results(results, strict))
+
+    elif os.path.isdir(abs_target):
+        # Could be single skill dir or collection dir
+        skill_md = _find_skill_md(abs_target)
+        if skill_md is not None:
+            # This dir has SKILL.md — single skill mode
+            results, error_count, warn_count = _validate_single_skill(abs_target, strict)
+            sys.exit(_print_single_results(results, strict))
+
+        # No SKILL.md at root — check if it's a collection
+        skill_dirs = _discover_skill_dirs(abs_target)
+        if not skill_dirs:
+            print(f"validate: no SKILL.md found at '{target}' "
+                  f"(not a skill dir or collection)", file=sys.stderr)
+            sys.exit(1)
+
+        # Collection mode — validate all skills
+        _validate_collection(skill_dirs, strict)
+
+    else:
+        print(f"validate: path not found '{target}'", file=sys.stderr)
+        sys.exit(1)
+
+
+def _validate_collection(skill_dirs, strict):
+    """Validate all skills in a collection directory.
+
+    Prints per-skill results and a summary. Exits 0 if all pass, 1 otherwise.
+    """
+    total = len(skill_dirs)
+    passed_count = 0
+    failed_count = 0
+    warned_count = 0
+    total_errors = 0
+    total_warnings = 0
+
+    for i, skill_dir in enumerate(skill_dirs, 1):
+        skill_name = os.path.basename(skill_dir)
+        print(f"{'=' * 60}")
+        print(f"  {i}/{total}: {skill_name}")
+        print(f"{'=' * 60}")
+
+        results, error_count, warn_count = _validate_single_skill(skill_dir, strict)
+
+        # Determine status for this skill
+        skill_passed = error_count == 0
+        if strict and warn_count > 0:
+            skill_passed = False
+
+        if skill_passed and warn_count > 0:
+            status = "OK (with warnings)"
+            warned_count += 1
+        elif skill_passed:
+            status = "OK"
+            passed_count += 1
+        else:
+            status = "FAILED"
+            failed_count += 1
+
+        total_errors += error_count
+        total_warnings += warn_count
+
+        print(f"  Status: {status} ({error_count} error(s), {warn_count} warning(s))")
+        _print_single_results(results, strict)
+        print()  # blank line between skills
+
+    # Summary
+    print(f"{'=' * 60}")
+    print(f"  Summary: {total} skill(s) validated")
+    print(f"  Passed: {passed_count}, Warnings: {warned_count}, Failed: {failed_count}")
+    print(f"  Total errors: {total_errors}, Total warnings: {total_warnings}")
+    print(f"{'=' * 60}")
+
+    sys.exit(0 if failed_count == 0 else 1)
 
 
 def cmd_info(args):
@@ -1093,6 +1219,12 @@ def build_parser():
         description=textwrap.dedent("""\
             Validate a SKILL.md file against the agent skills spec.
 
+            Supports three modes:
+              - Single skill: path to a skill directory or SKILL.md file
+              - Collection: path to a directory containing skill subdirectories
+              - Auto-detect: if the path is a directory without SKILL.md but
+                contains subdirs with SKILL.md, it validates all of them
+
             Checks:
               - Frontmatter presence and required fields
               - Name format (lowercase, hyphens, length)
@@ -1103,10 +1235,12 @@ def build_parser():
               skman.sh validate ./my-skill
               skman.sh validate ./my-skill/SKILL.md
               skman.sh validate --strict ./my-skill
+              skman.sh validate .agents/skills        # validate all skills
+              skman.sh validate ./skills-python        # validate custom collection
         """),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_validate.add_argument('path', help='Path to skill directory or SKILL.md file')
+    p_validate.add_argument('path', help='Path to skill directory, SKILL.md file, or skills collection directory')
     p_validate.add_argument(
         '--strict',
         action='store_true',

@@ -31,9 +31,13 @@ skman.sh create demo-skill "Dummy example skill" --version 2.4.1
 # Create with scripts and references
 skman.sh create my-skill "Desc" --with-scripts --with-references
 
-# Validate a skill
+# Validate a single skill
 skman.sh validate ./my-skill
 skman.sh validate --strict ./my-skill
+
+# Validate all skills in a collection directory
+skman.sh validate .agents/skills
+skman.sh validate ./skills-python
 
 # Inspect frontmatter and structure
 skman.sh info ./my-skill
@@ -69,11 +73,16 @@ The script validates name and description before creating files.
 
 ### Validate
 
-Run the built-in validator:
+Run the built-in validator on a single skill or an entire collection:
 
 ```bash
+# Single skill
 skman.sh validate ./my-skill
 skman.sh validate --strict ./my-skill
+
+# All skills in a collection directory
+skman.sh validate .agents/skills
+skman.sh validate ./skills-python
 ```
 
 ## Skill Format

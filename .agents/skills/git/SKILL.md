@@ -49,6 +49,7 @@ For full command tables (clone, branch, inspect, tags, remote, common workflows)
 - **Untracked files survive `reset --hard`** — use `clean -fd` to remove (irreversible).
 - **Submodules need explicit init** — `submodule update --init --recursive` after clone.
 - **`stash pop` fails on conflicts** — stash is preserved. Resolve, then `stash drop`.
+- **`Closes #N` in commit messages closes issues** — put `Closes #228` at the end of the commit message (after the body) to auto-close issues on merge. Works on GitHub, GitLab, Gitea. See [Closing Issues](references/11-closing-issues.md) for details.
 
 ## References
 
@@ -62,3 +63,4 @@ For full command tables (clone, branch, inspect, tags, remote, common workflows)
 - [Conventional Commits](references/08-conventional-commits.md) — types, scopes, breaking changes, rephrasing guide
 - [Keep a Changelog](references/09-keep-a-changelog.md) — categories, commit body format, CHANGELOG.md structure
 - [Semantic Versioning](references/10-semver.md) — MAJOR.MINOR.PATCH rules, pre-release, bump mapping
+- [Closing Issues](references/11-closing-issues.md) — auto-close issues with `Closes #N`, `Fixes #N`, `Resolves #N` in commit messages
