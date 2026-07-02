@@ -42,7 +42,7 @@ jump <label-name> [if <condition>]
 
 #### 1. Mathematical — evaluated via script
 
-Numeric comparisons and arithmetic expressions. The agent extracts variable values from context, writes a script, and runs it.
+Numeric comparisons and arithmetic expressions. Variables are mentioned by the user — they may appear for the first time in the condition itself. The agent extracts their values from context, writes a script, and runs it.
 
 ```
 jump label-retry if attempts < 3
@@ -76,7 +76,7 @@ jump label-summary if we have covered enough ground
 
 1. **Classify the condition**: Is it deterministic (math/logic) or free-form (natural language)?
 2. **For deterministic conditions**:
-   a. Extract variable values from the current context (conversation state, command outputs, previous results)
+   a. Extract variable values from the current context — variables may be mentioned for the first time in the condition itself
    b. Write a condition script to `/tmp/jump_cond_<label>_<timestamp>.sh`
    c. Execute the script via `bash`
    d. Exit code 0 → condition satisfied
@@ -85,14 +85,15 @@ jump label-summary if we have covered enough ground
 3. **For free-form conditions**: Evaluate using LLM judgment against current context
 4. **Output the result**:
    - Condition satisfied → write exactly `jump LABEL_NAME` and stop
-   - Condition not met → write exactly `continue` and resume conversation from current point
+   - Condition not met → write exactly `continue` and let the agent, harness, or LLM decide what to do next
 
 ### Jump Trigger
 
 The `jump LABEL_NAME` output is the activation signal. When this appears anywhere in a generated message:
 
-1. The system locates the matching `label LABEL_NAME` marker in the conversation
-2. Prompt processing resumes from that point onward
-3. Everything between the jump and the label is skipped
+1. The current agent or harness locates the matching `label LABEL_NAME` marker in the conversation
+2. If the label does not exist → output exactly `error: LABEL_NAME does not exist`
+3. If found, prompt processing resumes from that point onward
+4. Everything between the jump and the label is skipped
 
 This means `jump LABEL_NAME` can appear as the direct result of a condition evaluation, or be emitted organically during conversation — either way, it triggers an immediate jump to the labeled point.
