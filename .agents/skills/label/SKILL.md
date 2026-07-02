@@ -10,13 +10,11 @@ metadata:
 
 ## Overview
 
-Creates a named marker at the current point in the conversation. Other skills, messages, or instructions can reference it by name to anchor context, restore state, or branch logic. Think of it as a C/C++ label — purely a reference point, no behavior attached.
-
-Labels are resolved in order — nearest matching label wins. They carry no data, only named position.
+Creates a named marker at the current point in the conversation. Other skills, messages, or instructions can reference it by name to anchor context, restore state, or branch logic. Labels are resolved in order — nearest matching label wins. They carry no data, only named position.
 
 ## Usage
 
-### Activateion
+### Activation
 
 When invoked without a label name, output `label skill activated`.
 
