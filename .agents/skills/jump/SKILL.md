@@ -1,6 +1,6 @@
 ---
 name: jump
-description: Conditional branching — jump forward or backward to a named label and resume processing from that point. Conditions can be mathematical, logical, or free-form natural language descriptions.
+description: Conditional branching — jump forward or backward to a named label and resume processing from that point. Deterministic conditions (math, logic) are evaluated via on-the-fly scripts. Only vague natural-language conditions fall back to LLM judgment.
 metadata:
   tags:
     - meta
@@ -14,17 +14,35 @@ Jump is a conditional branching meta skill. It evaluates a condition and, when s
 
 Jump works alongside `label` which places named markers in the conversation. Jump evaluates whether to reach them.
 
+## Core Principle: Deterministic by Default
+
+**Mathematical and logical conditions are NEVER evaluated by the LLM.** They are compiled into a small script, executed, and the exit code determines the jump. This guarantees deterministic, reproducible results.
+
+Only **free-form natural language conditions** (vague, subjective, intent-based) fall back to LLM judgment.
+
 ## Usage
+
+### Activation
+
+When the jump skill is loaded without any prompt or condition to evaluate, it outputs:
+
+```
+jump activated
+```
+
+This signals the skill is ready. No action is taken until a condition is encountered.
 
 ### Syntax
 
 ```
-jump <label-name> if <condition>
+jump <label-name> [if <condition>]
 ```
 
 ### Condition Types
 
-**Mathematical** — numeric comparisons, arithmetic expressions:
+#### 1. Mathematical — evaluated via script
+
+Numeric comparisons and arithmetic expressions. The agent extracts variable values from context, writes a script, and runs it.
 
 ```
 jump label-retry if attempts < 3
@@ -32,7 +50,9 @@ jump label-done if score >= 90
 jump label-overflow if count > max + 10
 ```
 
-**Logical** — boolean operators, equality, membership:
+#### 2. Logical — evaluated via script
+
+Boolean operators, equality, membership, string comparisons. Same script mechanism.
 
 ```
 jump label-error-handling if status == "failed"
@@ -41,7 +61,9 @@ jump label-skip if not in_whitelist
 jump label-fallback if method == "a" || method == "b"
 ```
 
-**Free-form** — natural language descriptions evaluated by the agent:
+#### 3. Free-form — evaluated by LLM (fallback only)
+
+Natural language descriptions that are inherently subjective or context-dependent. These are the ONLY conditions the LLM evaluates directly.
 
 ```
 jump label-rewrite if the output is too verbose
@@ -52,55 +74,25 @@ jump label-summary if we have covered enough ground
 
 ### Execution Flow
 
-1. Evaluate the condition against current context (conversation state, variables, outputs, user intent)
-2. If condition is true → jump to the named label, resume processing from that point
-3. If condition is false → continue linearly, skip the jump
+1. **Classify the condition**: Is it deterministic (math/logic) or free-form (natural language)?
+2. **For deterministic conditions**:
+   a. Extract variable values from the current context (conversation state, command outputs, previous results)
+   b. Write a condition script to `/tmp/jump_cond_<label>_<timestamp>.sh`
+   c. Execute the script via `bash`
+   d. Exit code 0 → condition satisfied
+   e. Exit code non-zero → condition not met
+   f. Clean up the script file
+3. **For free-form conditions**: Evaluate using LLM judgment against current context
+4. **Output the result**:
+   - Condition satisfied → write exactly `jump LABEL_NAME` and stop
+   - Condition not met → write exactly `continue` and resume conversation from current point
 
-### Examples
+### Jump Trigger
 
-Pseudo-code example:
+The `jump LABEL_NAME` output is the activation signal. When this appears anywhere in a generated message:
 
-```
-# Place labels first (via label skill)
-/label start
-/label retry
-/label done
+1. The system locates the matching `label LABEL_NAME` marker in the conversation
+2. Prompt processing resumes from that point onward
+3. Everything between the jump and the label is skipped
 
-# Basic conditional jump
-/jump retry if error_count > 0
-/jump done if all_tasks_complete
-
-# Chained jumps (evaluated in order, first match wins)
-/jump critical if severity == "P0"
-/jump warning if severity == "P1"
-/jump info if severity == "P2"
-
-# Free-form intent-based jump
-/jump deep-dive if the user wants more detail
-/jump high-level if the user needs a summary
-```
-
-### Combining with Label
-
-Pseudo-code example, labels define destinations; jumps define the path. Use them together:
-
-```
-/label loop-top
-... do work ...
-/jump loop-top if more_items
-/jump finished otherwise
-
-/label finished
-... wrap up ...
-```
-
-## Gotchas
-
-- **Label must exist** — jumping to a label that was never placed has no effect. Verify the label was created before jumping to it.
-- **No nested jumps** — a jump targets a single label. For complex branching, chain multiple jump statements rather than nesting.
-- **First-match semantics** — when multiple jumps appear in sequence, evaluate them in order and stop at the first true condition. Later jumps are not evaluated.
-- **Free-form conditions are subjective** — the agent interprets natural language conditions. Be specific: "if output exceeds 200 words" is better than "if output is long".
-- **Backward jumps create loops** — jumping to an earlier label can repeat processing. Always pair backward jumps with a termination condition to avoid infinite loops.
-- **Condition scope is current context** — conditions evaluate against the conversation state at the moment the jump is reached, not when it was written. Variables or state may have changed.
-- **No variable assignment in conditions** — conditions are read-only evaluations. Use `if x > 5`, not `if x = 5`.
-- **Label skill dependency** — this skill requires `label` to define destinations. Load `label` skill alongside `jump` when setting up branching workflows.
+This means `jump LABEL_NAME` can appear as the direct result of a condition evaluation, or be emitted organically during conversation — either way, it triggers an immediate jump to the labeled point.
