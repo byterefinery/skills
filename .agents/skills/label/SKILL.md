@@ -1,6 +1,9 @@
 ---
 name: label
 description: Logical time marker. Use when you need a named point of reference in the conversation that other skills or messages can anchor to. Like a label in C/C++ — a place you can jump back to.
+metadata:
+  tags:
+    - meta
 ---
 
 # label
@@ -11,6 +14,8 @@ Creates a named marker at the current point in the conversation. Other skills, m
 
 ## Usage
 
-Set a label by naming it `label: checkpoint-alpha` or `label: 123-xyz-ABC`.
+Set a label by naming it `label: NAME` like: `label: checkpoint-alpha` or `label: 123-xyz-ABC`.
 
-Labels are resolved in order — nearest matching label wins. They carry no data, only position.
+It will just reply with `label: NAME` were `NAME` is what was give to skill.
+
+Labels are resolved in order — nearest matching label wins. They carry no data, only named position.
