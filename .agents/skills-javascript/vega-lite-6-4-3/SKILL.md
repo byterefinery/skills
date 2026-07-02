@@ -89,22 +89,14 @@ Minimal valid spec structure:
 }
 ```
 
-### Embedding in Web Apps
+**Output context matters:**
 
-Vega-Lite specs are compiled to Vega by the `vega-lite` library, then rendered by `vega`:
-
-```html
-<div id="vis"></div>
-<script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
-<script src="https://cdn.jsdelivr.net/npm/vega-lite@6.4.3"></script>
-<script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
-<script>
-  vegaEmbed("#vis", spec, {actions: false});
-</script>
-```
+- **In Markdown** — always wrap the spec in a `vega-lite` fenced code block (```` ```vega-lite ````). This is how `vega-lite.sh validate` extracts specs from `.md` files.
+- **In `.json` files** — write the spec as a raw JSON object. No code fences, no markdown wrapping. The file must be valid JSON when parsed.
 
 ## Gotchas
 
+- **Markdown vs JSON output** — In markdown, always use ` ```vega-lite ` fenced blocks. In `.json` files, dump the spec as raw JSON (no fences). A `.json` file containing markdown fences is not valid JSON.
 - **Always include `$schema`** — Omitting it means `vega-lite.sh validate` cannot determine the spec version. Use `https://vega.github.io/schema/vega-lite/v6.json` for v6.x compatibility.
 - **Data must be accessible at runtime** — Specs using `"url"` for data need a running server or public URL. For validation and portability, use inline `"values"` arrays.
 - **Mark vs mark definition** — `"mark": "bar"` is shorthand; `"mark": {"type": "bar", "tooltip": true}` is the full object form. Use the object form when customizing mark properties like `filled`, `cornerRadius`, or `aria`.
@@ -115,6 +107,7 @@ Vega-Lite specs are compiled to Vega by the `vega-lite` library, then rendered b
 - **Composite marks are syntactic sugar** — `boxplot`, `errorband`, and `errorbar` compile to layered specs with multiple primitive marks. They have special mark properties (e.g., `extent`, `borders`).
 - **Facet vs concat** — `row`/`column` encodings create faceted views sharing data; `concat`/`hconcat`/`vconcat` compose independent specs side-by-side.
 - **`repeat` uses `{"repeat": "repeat"}` field reference** — In repeat specs, reference the repeated dimension with `{"repeat": "repeat"}` in encoding fields.
+- **`vega-lite.sh validate` only extracts fenced blocks** — When validating markdown, it looks for `vega-lite` fenced code blocks. Plain JSON embedded without fences in `.md` files will be silently skipped.
 
 ## References
 
@@ -141,3 +134,4 @@ Each reference file covers one mark type or composition pattern with syntax rule
 - [19-facet.md](references/19-facet.md) — Faceted specs: column facet, row facet, row+column grid, independent scales
 - [20-concat.md](references/20-concat.md) — Concatenated specs: hconcat, vconcat, nested 2x2 grid, shared data reference
 - [21-repeat.md](references/21-repeat.md) — Repeat specs: column repeat, row repeat, row+column grid, with layers
+- [22-embedding.md](references/22-embedding.md) — Embedding in web apps: vega-embed CDN, options, programmatic access
