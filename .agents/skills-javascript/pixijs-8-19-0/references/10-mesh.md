@@ -156,6 +156,9 @@ const mesh = new MeshPlane({
     verticesY: 8,   // Vertical segments
 });
 
+// Automatically resizes on texture update
+mesh.autoResize = true; // default
+
 // Manual geometry
 const geometry = new PlaneGeometry({
     width: 400,
@@ -181,7 +184,7 @@ app.ticker.add(() => {
 
 ## MeshRope
 
-Chain of linked quads — useful for ropes, chains, tentacles.
+Chain of linked quads — useful for ropes, chains, tentacles, trails.
 
 ```ts
 import { MeshRope, RopeGeometry } from 'pixi.js';
@@ -199,6 +202,7 @@ const points = [
 const mesh = new MeshRope({
     texture: ropeTexture,
     points,
+    textureScale: 1, // > 0 repeats texture; 0 stretches it
 });
 
 // Animate points
@@ -211,25 +215,30 @@ app.ticker.add(() => {
 });
 ```
 
+Set `autoUpdate = true` to re-evaluate geometry each frame.
+
 ## PerspectiveMesh
 
-3D perspective projection on a plane.
+3D perspective projection on a plane (subclass of `MeshPlane`). Applies perspective correction by transforming UVs.
 
 ```ts
-import { PerspectiveMesh, PerspectivePlaneGeometry } from 'pixi.js';
+import { PerspectiveMesh } from 'pixi.js';
 
 const mesh = new PerspectiveMesh({
     texture: myTexture,
-    width: 400,
-    height: 300,
     verticesX: 20,
     verticesY: 20,
-    camera: {
-        position: new Point(0, 0, 500),
-        target: new Point(0, 0, 0),
-    },
+    x0: 0,    y0: 0,    // Top-left corner
+    x1: 300,  y1: 30,   // Top-right corner
+    x2: 280,  y2: 300,  // Bottom-right corner
+    x3: 20,   y3: 280,  // Bottom-left corner
 });
+
+// Update corners at runtime
+mesh.setCorners(x0, y0, x1, y1, x2, y2, x3, y3);
 ```
+
+Ideal for emulating 3D projection in 2D (e.g., card games, floor tiles, perspective UI).
 
 ## Custom Shaders
 

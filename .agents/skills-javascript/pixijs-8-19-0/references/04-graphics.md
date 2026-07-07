@@ -267,9 +267,17 @@ GraphicsContext.defaultStrokeStyle = {
 
 ## SVG Import
 
-Parse SVG strings into Graphics:
+Parse SVG strings or load SVG files into Graphics:
 
 ```ts
+// SVG string
+const shape = new Graphics().svg(`
+    <svg>
+        <path d="M 100 350 q 150 -300 300 0" stroke="blue" />
+    </svg>
+`);
+
+// SVG file
 import { SVGParser } from 'pixi.js';
 
 const svgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
@@ -277,10 +285,10 @@ const svgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"
 </svg>`;
 
 const graphicsData = await SVGParser.parseSVG(svgString);
-
-// Use the parsed data
 const graphics = new Graphics(graphicsData.context);
 ```
+
+:::warning Complex SVG hole geometries may render inaccurately due to PixiJS's performance-optimized triangulation system
 
 ## GraphicsPath
 

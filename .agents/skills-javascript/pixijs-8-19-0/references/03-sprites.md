@@ -183,10 +183,17 @@ tilingSprite.tileTransform.identity();
 | Property | Type | Description |
 |---|---|---|
 | `texture` | `Texture` | Texture to tile |
-| `tilePosition` | `PointData` | Offset of tiling pattern |
-| `tileScale` | `PointData` | Scale of each tile |
+| `tilePosition` | `ObservablePoint` | Offset of tiling pattern |
+| `tileScale` | `ObservablePoint` | Scale of each tile |
 | `tileRotation` | `number` | Rotation of tile pattern |
 | `tileTransform` | `Transform` | Full tile transform matrix |
+| `anchor` | `ObservablePoint` | Adjusts origin point |
+| `applyAnchorToTexture` | `boolean` | Anchor affects tile pattern start point |
+| `clampMargin` | `number` | Margin to avoid edge artifacts (default: 0.5) |
+
+### Width & Height vs Scale
+
+Unlike `Sprite`, setting `width` and `height` on `TilingSprite` directly changes the visible tiling area — it **does not affect the scale** of the tiles. Use `tileScale` to scale the tile pattern itself.
 
 ## NineSliceSprite
 
@@ -239,6 +246,21 @@ button.height = 80;
 | `topHeight` | `number` | Top border height (C) |
 | `bottomHeight` | `number` | Bottom border height (D) |
 | `anchor` | `ObservablePoint` | Anchor point |
+| `originalWidth` | `number` | Original texture width (before resize) |
+| `originalHeight` | `number` | Original texture height (before resize) |
+
+### Width and Height Behavior
+
+Setting `.width` and `.height` updates **geometry vertices**, not texture UVs. This is different from `scale` — the texture stretches to fit the new dimensions.
+
+### Dynamic Updates
+
+```ts
+// Change slice dimensions at runtime
+nineSlice.leftWidth = 20;
+nineSlice.topHeight = 25;
+// Each setter triggers a geometry update
+```
 
 ### Using Texture Borders
 

@@ -263,22 +263,53 @@ renderer.render({ container: stage });
 renderer.destroy(true);
 ```
 
-## Web Worker Support
+## Environments
 
-PixiJS can run in web workers using `WebWorkerAdapter`:
+### Browser (Default)
+
+No configuration needed — uses `BrowserAdapter` automatically.
+
+### Web Workers
 
 ```ts
 import { DOMAdapter, WebWorkerAdapter } from 'pixi.js';
 
+// Must be set before creating anything in PixiJS
 DOMAdapter.set(WebWorkerAdapter);
-// Now PixiJS uses the worker adapter for canvas creation
+
+const app = new Application();
+await app.init({ width: 800, height: 600 });
+
+app.canvas; // OffscreenCanvas
+```
+
+### Custom Adapters
+
+For non-standard environments (Node.js, headless testing):
+
+```ts
+import { DOMAdapter } from 'pixi.js';
+
+const CustomAdapter = {
+    createCanvas: (width, height) => { /* custom implementation */ },
+    getCanvasRenderingContext2D: () => { /* custom 2D context */ },
+    getWebGLRenderingContext: () => { /* custom WebGL context */ },
+    getNavigator: () => ({ userAgent: 'Custom', gpu: null }),
+    getBaseUrl: () => 'custom://',
+    fetch: async (url, options) => { /* custom fetch */ },
+    parseXML: (xml) => { /* custom XML parser */ },
+};
+
+DOMAdapter.set(CustomAdapter);
 ```
 
 ## Performance Tips
 
 - Set `resolution` to `window.devicePixelRatio` for crisp rendering on HiDPI displays
 - Use `autoDensity: true` so resolution adjusts on resize
-- Prefer WebGPU when available for better performance
+- Prefer WebGL for production (WebGPU is experimental)
 - Disable `stencil` if you don't use stencil masks
 - Use `preserveDrawingBuffer: false` unless you need to read back pixels
 - Set `clearBeforeRender: false` if you manage clearing manually (advanced)
+- Use `textureGCActive: true` (default) for automatic texture garbage collection
+- Configure `textureGCMaxIdle` and `textureGCCheckCountMax` for custom GC behavior

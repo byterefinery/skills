@@ -343,7 +343,32 @@ await Assets.init({
 });
 ```
 
+## Prepare System
+
+Textures loaded via `Assets` still need GPU upload. Use the `prepare` plugin to pre-upload before first render.
+
+```ts
+import 'pixi.js/prepare';
+
+const app = new Application();
+await app.init();
+
+// Don't start rendering yet
+app.stop();
+
+// Add content to stage
+app.stage.addChild(graphics);
+
+// Upload to GPU before first render (avoids stutter)
+await app.renderer.prepare.upload(app.stage);
+
+// Now start rendering
+app.start();
+```
+
 ## Texture Matrix
+
+For animating texture UVs (e.g., scrolling textures on sprites):
 
 For animating texture UVs (e.g., scrolling textures on sprites):
 

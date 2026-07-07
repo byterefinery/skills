@@ -123,6 +123,8 @@ style.stroke = '#000000';
 
 ### Drop Shadow
 
+In v8, `dropShadow` is an object. Update properties directly on the object:
+
 ```ts
 style.dropShadow = {
     alpha: 0.5,
@@ -131,6 +133,10 @@ style.dropShadow = {
     color: 0x000000,
     distance: 6,
 };
+
+// Update individual properties
+style.dropShadow.color = '#ff0000';
+style.dropShadow.blur = 8;
 ```
 
 ### Dynamic Updates
@@ -213,16 +219,31 @@ interface BitmapTextStyle {
 3. **Pre-installed** — registered via `BitmapFont.install()`
 
 ```ts
-// MSDF font generation: https://msdf-bmfont.donmccurdy.com/
-// Load MSDF font
+// MSDF/SDF font generation: https://msdf-bmfont.donmccurdy.com/
+// AssetPack can also generate MSDF/SDF fonts from .ttf/.otf
+
+// Load MSDF/SDF font
 const font = await Assets.load('fonts/myFont.fnt');
 
-// The font will automatically use MSDF rendering if supported
+// Automatically uses MSDF/SDF rendering if the font supports it
 const text = new BitmapText({
     text: 'MSDF Text',
     style: { fontFamily: 'myFont' },
 });
 ```
+
+### MSDF/SDF Benefits
+
+- Crisp, resolution-independent text at any size and scale
+- No blurring when scaled up
+- Supports rotation without quality loss
+- Generated via [AssetPack](https://pixijs.io/assetpack/) or [msdf-bmfont](https://msdf-bmfont.donmccurdy.com/)
+
+### Limitations
+
+- `BitmapText.resolution` is not mutable after creation
+- Large character sets (CJK, emoji) are impractical due to texture size limits
+- Use `Text` or `HTMLText` for dynamic internationalization or emoji support
 
 ## HTMLText
 
@@ -256,23 +277,35 @@ const text = new HTMLText({
     }
 });
 
-// Custom tags
+// Custom tags with tagStyles
 const text = new HTMLText({
-    text: '<custom>Custom Tag</custom>',
+    text: '<red>Red</red>, <blue>Blue</blue>',
     style: {
-        fontFamily: 'Arial',
+        fontFamily: 'DM Sans',
         fontSize: 32,
-        fill: 0x4a4a4a,
+        fill: '#ffffff',
         tagStyles: {
-            custom: {
-                fontSize: 32,
-                fill: '#00ff00',
-                fontStyle: 'italic',
-            }
-        }
+            red: { fill: 'red' },
+            blue: { fill: 'blue' },
+        },
     }
 });
+
+// CSS overrides
+const fancy = new HTMLText({
+    text: '<b>Styled</b> text',
+    style: {
+        fontFamily: 'Arial',
+        fontSize: 24,
+        fill: '#ffffff',
+    }
+});
+fancy.style.addOverride('text-shadow: 2px 2px 4px rgba(0,0,0,0.5)');
 ```
+
+### Async Rendering
+
+HTMLText renders asynchronously (after the next frame). Text content is not immediately visible after instantiation.
 
 ### HTMLTextStyle
 
@@ -302,7 +335,7 @@ interface HTMLTextStyle {
 
     // HTML-specific
     tagStyles?: Record<string, Partial<HTMLTextStyle>>; // Custom tag styles
-    css?: string; // Additional CSS
+    cssOverrides?: string[]; // CSS override strings
 }
 ```
 
@@ -320,13 +353,77 @@ interface HTMLTextStyle {
 | **CJK languages** | Good | Poor (too many glyphs) | Good |
 | **Emoji** | Yes | No | Yes |
 
+## SplitText & SplitBitmapText
+
+Break text into individual lines, words, and characters — each as its own display object. Enables per-segment animations and advanced text layout effects.
+
+:::warning Experimental — may evolve in future versions
+
+```ts
+import { SplitText, SplitBitmapText } from 'pixi.js';
+
+// SplitText (based on Text)
+const text = new SplitText({
+    text: 'Hello World',
+    style: { fontSize: 32, fill: 0xffffff },
+    lineAnchor: 0.5,            // Center lines
+    wordAnchor: { x: 0, y: 0.5 }, // Left-center words
+    charAnchor: { x: 0.5, y: 1 }, // Bottom-center characters
+    autoSplit: true,            // Auto-update on text/style change
+});
+
+// SplitBitmapText (based on BitmapText, high-performance)
+const bitmap = new SplitBitmapText({
+    text: 'High Performance',
+    style: { fontFamily: 'GameFont', fontSize: 32 },
+    autoSplit: true,
+});
+
+// Access segments
+console.log(text.lines);  // Array of line containers
+console.log(text.words);  // Array of word containers
+console.log(text.chars);  // Array of character display objects
+
+// Convert existing text to split version
+const split = SplitText.from(existingText);
+const splitBitmap = SplitBitmapText.from(existingBitmapText);
+
+// Animation example (with GSAP)
+text.chars.forEach((char, i) => {
+    gsap.from(char, { alpha: 0, delay: i * 0.05 });
+});
+
+text.words.forEach((word, i) => {
+    gsap.to(word.scale, { x: 1.2, y: 1.2, yoyo: true, repeat: -1, delay: i * 0.2 });
+});
+```
+
+### Global Defaults
+
+```ts
+SplitText.defaultOptions = {
+    lineAnchor: 0.5,
+    wordAnchor: { x: 0, y: 0.5 },
+    charAnchor: { x: 0.5, y: 1 },
+};
+```
+
+### Limitations
+
+- Creates additional display objects — less efficient than plain Text
+- Character spacing differs slightly from standard Text (no browser kerning)
+- Use only when per-segment animations or interactive text effects are needed
+
 ## Text Performance Tips
 
 - **Use BitmapText** for frequently updated text (scores, HUD values)
 - **Use Text** for static or rarely changing text with good quality
 - **Use HTMLText** for rich formatted text (dialogs, descriptions)
+- **Use SplitText/SplitBitmapText** for per-character/word animations
 - **Reuse TextStyle objects** — cloning is cheaper than creating new ones
 - **Set `wordWrapWidth`** to prevent unbounded text growth
 - **Use `padding: 0`** on TextStyle to reduce texture size
 - **Prefer BitmapText** for games with lots of text elements
 - **Avoid creating Text objects in render loop** — reuse and update `.text` property
+- **BitmapText.resolution is not mutable** — must be set by the BitmapFont
+- **BitmapText large character sets** — CJK or emoji-rich sets impractical (too much memory). Use Text or HTMLText instead

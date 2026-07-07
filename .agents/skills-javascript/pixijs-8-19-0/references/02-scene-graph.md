@@ -35,6 +35,7 @@ const container = new Container({
 // Add children
 container.addChild(sprite);
 container.addChild(sprite1, sprite2, sprite3); // Multiple
+container.addChildAt(sprite, 0); // Insert at index
 const added = container.addChild<Sprite>(new Sprite(texture)); // Typed
 
 // Remove children
@@ -45,12 +46,17 @@ container.removeChildren(); // All children
 container.removeChildren(2); // From index 2
 container.removeChildren(2, 5); // From index 2, count 5
 
+// Reparent (move to this container, keeping world transform)
+container.reparentChild(child);
+container.reparentChildAt(child, index);
+
 // Access children
 container.children; // Read-only array
 container.children[0];
-container.getChildByName('label'); // Search by label
-container.getChildByName('label', true); // Recursive search
-container.getChildAt(0);
+container.getChildByName('label'); // Search by label (alias for getChildByLabel)
+container.getChildByLabel('label'); // Search by label
+container.getChildByLabel('label', true); // Recursive search
+container.getChildrenByLabel(/^enemy/); // Regex search (all matching)
 container.getChildAt(0);
 container.getChildIndex(sprite); // Get index
 container.setChildIndex(sprite, 0); // Reorder
@@ -131,11 +137,18 @@ Advanced (requires `import 'pixi.js/advanced-blend-modes'`):
 const bounds = container.getBounds();
 const rect = bounds.rectangle; // Get as Rectangle
 
+// Local bounds (object's own coordinate space)
+const localBounds = container.getLocalBounds();
+
 // Fast bounds (skips invisible/hidden children)
 const fastBounds = container.getFastGlobalBounds();
 
 // Set custom bounds area (optimization for large child counts)
 container.boundsArea = new Rectangle(0, 0, 500, 500);
+
+// Set size (width + height with one bounds calculation — more efficient)
+container.setSize(200, 100);
+const size = container.getSize(); // { width: 200, height: 100 }
 ```
 
 ### Coordinate Conversion
@@ -294,20 +307,36 @@ container.filters = [
 ];
 container.filterArea = new Rectangle(0, 0, 200, 200); // Optimization
 
-// Mask
+// Mask (Graphics or Sprite)
 const mask = new Graphics();
 mask.circle(100, 100, 50).fill(0xffffff);
 container.mask = mask;
 container.addChild(mask); // Mask must be a child
+
+// Inverse mask (render everything OUTSIDE the mask)
+container.setMask({ mask: maskGraphics, inverse: true });
+
+// MaskFilter (filter-based masking, alternative to container.mask)
+import { MaskFilter } from 'pixi.js';
+container.filters = [new MaskFilter(maskSprite)];
 ```
 
 ## Cache as Texture
 
-Cache a container as a texture for performance:
+Cache a container as a texture for performance (replaces v7's `cacheAsBitmap`).
 
 ```ts
 // Enable caching
 container.cacheAsTexture(true);
+
+// With config options
+container.cacheAsTexture({
+    resolution: 2,
+    antialias: true,
+});
+
+// Update after changes
+container.updateCacheTexture();
 
 // Disable caching
 container.cacheAsTexture(false);
@@ -316,6 +345,14 @@ container.cacheAsTexture(false);
 const cachedTexture = container._cacheTexture;
 ```
 
+### Gotchas
+
+- Cached items render at actual size, ignoring transforms (e.g., 50% scale still caches at 100%)
+- Filters may not behave as expected — wrap in parent container and cache the parent
+- Don't apply to containers over 4096x4096 (GPU memory limit)
+- Each cached texture consumes GPU memory
+- Cache updates only when the containing scene is rendered
+
 ## Sorting
 
 ```ts
@@ -323,11 +360,48 @@ const cachedTexture = container._cacheTexture;
 container.sortableChildren = true;
 
 // Set z-index (depth)
-child._zIndex = 5;
+child1.zIndex = 1;
+child2.zIndex = 10;
+
+// Manual re-sort
+container.sortChildren();
 
 // Custom sort
-container.sortChildren = (a, b) => a._zIndex - b._zIndex;
+container.sortChildren = (a, b) => a.zIndex - b.zIndex;
 ```
+
+Use sparingly — sorting is expensive for large child counts.
+
+## RenderLayer
+
+Decouple render order from scene graph hierarchy. Objects maintain their logical parent for transforms but render at the layer's position in the scene graph.
+
+```ts
+import { RenderLayer } from 'pixi.js';
+
+const layer = new RenderLayer();
+stage.addChild(layer);
+
+// Attach — render at layer's position, keep logical parent
+layer.attach(sprite);
+
+// Detach — render at original scene graph position
+layer.detach(sprite);
+
+// Sorting within layer
+layer.sortableChildren = true;
+sprite.zIndex = 10;
+layer.sortRenderLayerChildren();
+
+// Reposition layer
+stage.addChildAt(layer, 0); // Render first
+```
+
+### Gotchas
+
+- Objects re-added to a parent don't auto-reattach to their previous layer — call `layer.attach()` explicitly
+- Removing a parent container removes all its children from layers automatically
+- Layer position in scene graph determines render priority relative to other layers
 
 ## Container Mixins
 

@@ -164,9 +164,19 @@ sprite.cursor = 'pointer';
 sprite.cursor = 'grab';
 sprite.cursor = 'crosshair';
 
+// Custom cursor image
+sprite.cursor = "url('my-cursor.png'), auto";
+
 // Dynamic cursor
 sprite.on('pointerover', () => { sprite.cursor = 'pointer'; });
 sprite.on('pointerout', () => { sprite.cursor = 'auto'; });
+
+// Default cursor styles (applied to all interactive objects)
+app.renderer.events.cursorStyles.default = "url('default.png'), auto";
+app.renderer.events.cursorStyles.hover = "url('hover.png'), auto";
+
+// Use named cursor style
+sprite.cursor = 'hover'; // Uses cursorStyles.hover
 ```
 
 ## EventBoundary
@@ -222,6 +232,39 @@ sprite.on('touchmove', (e) => {});
 sprite.on('touchcancel', (e) => {});
 ```
 
+## Listening Styles
+
+PixiJS supports three styles of event listening:
+
+```ts
+// EventEmitter style (recommended)
+const handler = (e) => console.log('clicked');
+sprite.on('pointerdown', handler);
+sprite.once('pointerdown', handler); // One-time
+sprite.off('pointerdown', handler);
+
+// DOM-style events
+sprite.addEventListener(
+    'click',
+    (event) => { console.log('Clicked!', event.detail); },
+    { once: true },
+);
+sprite.removeEventListener('click', handler);
+
+// Callback style
+sprite.onclick = (event) => {
+    console.log('Clicked!', event.detail);
+};
+```
+
+## Checking Interactivity
+
+```ts
+if (sprite.isInteractive()) {
+    // true if eventMode is 'static' or 'dynamic'
+}
+```
+
 ## Event Performance Tips
 
 - **Use `eventMode: 'none'`** for objects that don't need interaction
@@ -231,3 +274,4 @@ sprite.on('touchcancel', (e) => {});
 - **Use `stopPropagation()`** to prevent unnecessary event bubbling
 - **Avoid event listeners in render loop** — add/remove outside of ticker
 - **Use EventBoundary dispatch** for global event listening instead of per-object listeners
+- **Use `interactiveChildren: false`** on containers with no interactive children to skip crawling

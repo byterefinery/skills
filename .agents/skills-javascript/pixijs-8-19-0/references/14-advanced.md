@@ -436,3 +436,112 @@ const texture = await Assets.load('animation.gif');
 const sprite = new Sprite({ texture });
 // GIF textures auto-update
 ```
+
+## Mixing PixiJS and Three.js
+
+Share a single WebGL context between PixiJS (2D) and Three.js (3D):
+
+```ts
+import * as THREE from 'three';
+import { WebGLRenderer as PixiRenderer } from 'pixi.js';
+
+// Three.js creates the canvas and context
+const threeRenderer = new THREE.WebGLRenderer({
+    antialias: true,
+    stencil: true, // Required for PixiJS masks
+});
+threeRenderer.setSize(WIDTH, HEIGHT);
+document.body.appendChild(threeRenderer.domElement);
+
+// PixiJS shares the context
+const pixiRenderer = new PixiRenderer();
+await pixiRenderer.init({
+    context: threeRenderer.getContext(),
+    width: WIDTH,
+    height: HEIGHT,
+    clearBeforeRender: false, // Don't clear Three.js content
+});
+
+// Render loop
+function render() {
+    threeRenderer.resetState();
+    threeRenderer.render(scene, camera);
+
+    pixiRenderer.resetState();
+    pixiRenderer.render({ container: stage });
+
+    requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+```
+
+### Gotchas
+
+- Enable `stencil: true` on Three.js renderer for PixiJS masks
+- Keep dimensions in sync when resizing
+- Use `resetState()` when switching between renderers
+- Set `clearBeforeRender: false` or `clear: false` in render call
+- Textures are not shared between PixiJS and Three.js
+- Works with other 3D engines (Babylon.js, PlayCanvas) that support state management
+
+## Ecosystem
+
+### Core Libraries
+
+| Library | Purpose |
+|---|---|
+| [DevTools](https://pixijs.io/devtools/) | Browser extension for debugging scene graph, performance, textures |
+| [PixiJS React](https://react.pixijs.io/) | React bindings (requires React 19+) |
+| [Layout](https://layout.pixijs.io/) | Flexbox-style layout via Yoga engine |
+| [Spine Integration](https://esotericsoftware.com/spine-pixi) | Skeletal animations |
+| [Filters](https://github.com/pixijs/filters) | Extended filter collection (twist, grayscale, bloom, etc.) |
+| [Sound](https://github.com/pixijs/sound) | WebAudio API playback with filters |
+| [UI](https://github.com/pixijs/ui) | Pre-built UI components (buttons, sliders, scrollbox, etc.) |
+| [AssetPack](https://pixijs.io/assetpack/) | Asset management, manifest generation, compressed textures |
+
+### Creation Templates
+
+Use `npm create pixi.js@latest` to scaffold projects with pre-configured setups for specific platforms and use cases.
+
+## Accessibility
+
+Opt-in accessibility system using DOM overlays for screen readers and keyboard navigation.
+
+```ts
+import 'pixi.js/accessibility';
+
+// Enable on objects
+const button = new Container();
+button.accessible = true;
+button.accessibleTitle = 'Start Game';
+button.accessibleHint = 'Click to start the game';
+button.accessibleType = 'button'; // HTML tag name for the overlay
+button.tabIndex = 0;
+
+// Configuration
+const app = new Application();
+await app.init({
+    accessibilityOptions: {
+        enabledByDefault: true,      // Enable on startup
+        activateOnTab: false,        // Disable auto-activation via tab
+        deactivateOnMouseMove: false, // Keep active with mouse use
+        debug: true,                  // Show div overlays
+    },
+});
+
+// Programmatic control
+app.renderer.accessibility.setAccessibilityEnabled(true);
+```
+
+### Properties
+
+| Property | Description |
+|---|---|
+| `accessible` | Enables accessibility for the object |
+| `accessibleTitle` | Sets the title for screen readers |
+| `accessibleHint` | Sets the `aria-label` |
+| `accessibleText` | Alternative inner text for the div |
+| `accessibleType` | Tag name (`'button'`, `'div'`, etc.) |
+| `accessiblePointerEvents` | CSS `pointer-events` value |
+| `tabIndex` | Keyboard focus order |
+| `accessibleChildren` | Whether children are accessible |

@@ -4,6 +4,36 @@
 
 High-performance particle rendering. Can handle 100,000+ particles.
 
+:::warning Experimental API
+The Particle API is stable but **experimental**. Its interface may evolve in future PixiJS versions.
+
+```ts
+import { ParticleContainer, Particle, Texture } from 'pixi.js';
+
+const texture = Texture.from('bunny.png');
+
+const container = new ParticleContainer({
+    dynamicProperties: {
+        position: true,   // default
+        vertex: false,
+        rotation: false,
+        color: false,
+    },
+    boundsArea: new Rectangle(0, 0, 800, 600),
+});
+
+for (let i = 0; i < 100000; i++) {
+    const particle = new Particle({
+        texture,
+        x: Math.random() * 800,
+        y: Math.random() * 600,
+    });
+    container.addParticle(particle);
+}
+
+app.stage.addChild(container);
+```
+
 ### Key Differences from v7
 
 - Uses `Particle` objects, not `Sprites`

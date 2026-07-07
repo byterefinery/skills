@@ -308,20 +308,36 @@ TAU;        // Math.PI * 2
 
 ## Math Extras
 
-Additional math utilities (requires `import 'pixijs/math-extras'`):
+Additional math utilities. Requires `import 'pixi.js/math-extras'`.
 
 ```ts
 import 'pixi.js/math-extras';
-
-// Extended Matrix methods
-matrix.decompose(point);
-matrix.equals(otherMatrix);
-
-// Extended Point methods
-point.rotateAround(origin, angle);
-point.scale(x, y);
-point.translate(x, y);
 ```
+
+### Enhanced Point Methods
+
+| Method | Description |
+|---|---|
+| `add(other[, out])` | Adds another point |
+| `subtract(other[, out])` | Subtracts another point |
+| `multiply(other[, out])` | Component-wise multiplication |
+| `multiplyScalar(scalar[, out])` | Multiply by scalar |
+| `dot(other)` | Dot product |
+| `cross(other)` | Scalar z-component of 3D cross product |
+| `normalize([out])` | Returns unit-length vector |
+| `magnitude()` | Euclidean length |
+| `magnitudeSquared()` | Squared length (efficient for comparisons) |
+| `project(onto[, out])` | Projects onto another vector |
+| `reflect(normal[, out])` | Reflects across a normal |
+
+### Enhanced Rectangle Methods
+
+| Method | Description |
+|---|---|
+| `containsRect(other)` | Returns true if this rectangle contains the other |
+| `equals(other)` | Checks if all properties are equal |
+| `intersection(other[, out])` | Returns overlap rectangle |
+| `union(other[, out])` | Returns rectangle encompassing both |
 
 ## Utility Functions
 

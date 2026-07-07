@@ -73,8 +73,15 @@ ticker.add((ticker) => {
 
 ### Update Priority
 
+Higher priority values run earlier.
+
 ```ts
 import { UPDATE_PRIORITY } from 'pixi.js';
+
+// Constants:
+// UPDATE_PRIORITY.HIGH = 50
+// UPDATE_PRIORITY.NORMAL = 0
+// UPDATE_PRIORITY.LOW = -50
 
 // High priority (runs first)
 ticker.add(

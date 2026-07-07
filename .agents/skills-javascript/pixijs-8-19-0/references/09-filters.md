@@ -291,6 +291,66 @@ const maskFilter = new MaskFilter(maskSprite);
 container.filters = [maskFilter];
 ```
 
+## AlphaFilter
+
+Applies uniform alpha to a container (flattens alpha instead of applying per-child).
+
+```ts
+import { AlphaFilter } from 'pixi.js';
+
+const alphaFilter = new AlphaFilter({
+    alpha: 0.5, // Alpha value (0-1)
+});
+
+container.filters = [alphaFilter];
+```
+
+## PassthroughFilter
+
+No-op filter. Useful as placeholder or for testing.
+
+```ts
+import { PassthroughFilter } from 'pixi.js';
+
+const passthrough = new PassthroughFilter();
+container.filters = [passthrough];
+```
+
+## Blend Mode Filters
+
+Advanced blend mode effects via shaders. Requires `import 'pixi.js/advanced-blend-modes'`.
+
+```ts
+import 'pixi.js/advanced-blend-modes';
+import {
+    ColorBurnBlend,
+    ColorDodgeBlend,
+    DarkenBlend,
+    DivideBlend,
+    HardMixBlend,
+    LinearBurnBlend,
+    LinearDodgeBlend,
+    LinearLightBlend,
+    PinLightBlend,
+    SubtractBlend,
+} from 'pixi.js';
+
+container.filters = [new HardMixBlend()];
+```
+
+| Filter Class       | Description                                        |
+|---|---|
+| `ColorBurnBlend`   | Darkens the base color to reflect the blend color |
+| `ColorDodgeBlend`  | Brightens the base color |
+| `DarkenBlend`      | Retains the darkest color components |
+| `DivideBlend`      | Divides the base color by the blend color |
+| `HardMixBlend`     | High-contrast blend |
+| `LinearBurnBlend`  | Darkens using linear formula |
+| `LinearDodgeBlend` | Lightens using linear formula |
+| `LinearLightBlend` | Combination of linear dodge and burn |
+| `PinLightBlend`    | Selective replacement of colors |
+| `SubtractBlend`    | Subtracts the blend color from base |
+
 ## Filter Performance Tips
 
 - **Group filtered objects** — one filter on a parent container is much faster than many filters on children

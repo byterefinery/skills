@@ -324,27 +324,92 @@ await Assets.init({
 });
 ```
 
-## Background Loading
+## Resolver
 
-Load assets in background without blocking.
+The resolver handles URL resolution and format selection. It works with `UnresolvedAsset` and `ResolvedAsset` structures.
+
+### Wildcard Patterns
 
 ```ts
-import { BackgroundLoader } from 'pixi.js';
+// Format variants — tries avif, then webp, then png
+await Assets.load({
+    alias: 'bunny',
+    src: 'images/bunny.{png,webp,avif}',
+});
 
-const bgLoader = new BackgroundLoader();
-
-// Queue assets for background loading
-bgLoader.queue(['assets/sprite1.png', 'assets/sprite2.png']);
-
-// Start background loading
-bgLoader.start();
-
-// Check progress
-const progress = bgLoader.progress;
-
-// Wait for completion
-await bgLoader.completed;
+// Resolution + format variants
+await Assets.load({
+    alias: 'bunny',
+    src: 'images/bunny@{0.5,1,2}x.{png,webp}',
+});
+// Expands to: bunny@0.5x.png, bunny@0.5x.webp, bunny@1x.png, bunny@1x.webp, bunny@2x.png, bunny@2x.webp
+// PixiJS selects the best match based on platform capabilities
 ```
+
+### Resolver Lifecycle
+
+1. **UnresolvedAsset Creation** — assets normalized with metadata
+2. **Source Expansion** — wildcards expanded to concrete URLs
+3. **Best-Match Selection** — platform-aware heuristics pick the best source
+4. **ResolvedAsset Output** — specific URL ready for loading
+
+### Explicit Parser and Options
+
+```ts
+await Assets.load({
+    alias: 'bunny',
+    src: 'images/bunny.png',
+    loadParser: 'loadTextures',
+    data: {
+        alphaMode: 'no-premultiply-alpha',
+    },
+});
+```
+
+## Background Loading
+
+Load assets in the background without blocking the main thread. Improves responsiveness and reduces initial loading time.
+
+```ts
+// Initialize with manifest
+await Assets.init({
+    manifest: {
+        bundles: [
+            {
+                name: 'home-screen',
+                assets: [{ alias: 'flowerTop', src: 'https://pixijs.com/assets/flowerTop.png' }],
+            },
+            {
+                name: 'game-screen',
+                assets: [{ alias: 'eggHead', src: 'https://pixijs.com/assets/eggHead.png' }],
+            },
+        ],
+    },
+});
+
+// Start loading bundles in the background
+Assets.backgroundLoadBundle(['game-screen']);
+
+// Load only the first screen assets immediately
+const resources = await Assets.loadBundle('home-screen');
+
+// Load individual assets in background
+Assets.backgroundLoad({ alias: 'extra', src: 'assets/extra.png' });
+```
+
+## AssetPack
+
+[**AssetPack**](https://pixijs.io/assetpack/) is the recommended tool for managing assets in larger projects. It scans asset folders and generates optimized manifests and bundles automatically.
+
+### Key Benefits
+
+- Organizes assets by directory or pattern
+- Supports output in PixiJS manifest format
+- Generates compressed texture variants (`.basis`, `.ktx2`, `.dds`)
+- Reduces boilerplate and risk of manual mistakes
+- Can generate MSDF/SDF bitmap fonts from `.ttf`/`.otf`
+
+Integrate into your build pipeline to generate the manifest file, then load it with `Assets.init({ manifest })`.
 
 ## Asset Performance Tips
 
@@ -358,3 +423,4 @@ await bgLoader.completed;
 - **Use progress callbacks** — show loading progress to users
 - **Use `skipDetections: true`** in production if you control target formats
 - **Cache parser for custom formats** — avoid re-parsing loaded data
+- **Use AssetPack** — automate manifest generation and compressed texture creation
