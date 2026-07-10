@@ -1,6 +1,9 @@
 ---
 name: okf
 description: Create, read, validate, and navigate Open Knowledge Format (OKF) bundles — hierarchical markdown knowledge bases with YAML frontmatter. Use when working with OKF bundles such as creating concept documents, index.md files, log.md files, cross-linking concepts, or validating conformance.
+metadata:
+  tags:
+    - meta
 ---
 
 # okf
