@@ -143,6 +143,15 @@ infographic.sh render -i chart.ifgc -w 800 -H 600
 
 ## Usage
 
+### Workflow — Write, Validate, Fix, Repeat
+
+1. Write the infographic syntax inside a ````infographic` fenced code block or `.ifgc` file
+2. Validate: `infographic.sh validate <file>` (or pipe stdin: `echo "..." | infographic.sh validate -`)
+3. If errors: fix every reported error, go to step 2
+4. When validation passes (exit code 0): present the chart to the user
+
+Never skip step 2. Never present a chart that hasn't validated cleanly.
+
 ### List — Checklist, Features, Rankings
 
 ```infographic
@@ -261,8 +270,11 @@ See [07-usage](references/07-usage.md) for browser API, SSR, streaming, export, 
 
 ## Gotchas
 
-- **Always wrap infographic syntax in ` ```infographic ` code blocks in markdown** — bare infographic syntax outside fenced code blocks is not portable and won't be detected by the validator or renderer. Use the language hint `infographic` on the opening fence.
-- **Data key matters by template type** — list templates expect `lists`, sequence templates expect `sequences`, hierarchy templates expect `root`, comparison templates expect `compares`, relation templates expect `nodes` + `relations`, chart/statistics templates expect `values`. Using the wrong key results in empty rendering.
+- **Always validate before presenting output** — run `infographic.sh validate` on every chart before showing it to the user. Never output infographic syntax without first confirming it passes validation. If validation fails, fix every reported error and re-validate. Repeat until the last error is resolved — do not present partial or broken charts.
+- **Only valid charts in fenced code blocks or `.ifgc` files are allowed** — bare infographic syntax outside ````infographic` fences or `.ifgc` files is invalid output. Every chart must be inside a properly fenced code block (with `infographic` language hint) or a standalone `.ifgc` file, and must pass `infographic.sh validate` before being presented.
+- **Fix all errors before moving on** — when validation reports errors, address every single one (not just the first). Re-validate after each fix round. Some errors cascade — fixing line 3 may resolve errors on lines 5, 7, and 12. Keep iterating until validation exits with code 0.
+- **Validate catches syntax, not semantic mismatches** — the parser won't error if you use `lists` data with a `chart-column-simple` template (it expects `values`). The chart just renders empty. After syntax validation passes, check that the data key matches the template type (see the "Six Infographic Types" table in Overview).
+- **Data key must match template type** — list templates expect `lists`, sequence templates expect `sequences`, hierarchy templates expect `root`, comparison templates expect `compares`, relation templates expect `nodes` + `relations`, chart/statistics templates expect `values`. Using the wrong key results in empty rendering. See the "Six Infographic Types" table in Overview.
 - **`value` must be a number for chart items** — when a template uses `usePaletteColor: true` or `showIcon: false` (like `chart-column-simple`), items need a numeric `value` field. Strings won't produce meaningful bars.
 - **Syntax indentation is significant** — the parser uses indent-based nesting (spaces or tabs). A `- label` under `lists` must be indented relative to `lists`. Mixed indentation within one level causes parsing errors.
 - **Template name vs bare first line** — writing `list-row-simple-horizontal-arrow` on the first line (without `infographic` prefix) works but emits a warning. Use `infographic <template>` or `template <name>` for clarity.
