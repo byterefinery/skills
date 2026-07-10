@@ -2,7 +2,8 @@
 name: mermaid-11-15-0
 description: >
   Mermaid diagram syntax reference and validation. Use when writing, debugging,
-  or converting Mermaid diagrams: flowchart, sequenceDiagram, stateDiagram, classDiagram,
+  or converting Mermaid diagrams. Every diagram must pass mermaid.sh validate
+  before output. Supports: flowchart, sequenceDiagram, stateDiagram, classDiagram,
   gantt, erDiagram, pie, gitgraph, journey, mindmap, timeline, xychart, radar-beta,
   quadrantChart, sankey, block, architecture-beta, c4, packet, treemap-beta, venn-beta,
   wardley-beta, ishikawa-beta, kanban, requirementDiagram.
@@ -103,16 +104,40 @@ The script reads `.mmd` files (raw mermaid) or `.md` files (extracts fenced merm
 | `kanban` | Kanban boards |
 | `requirementDiagram` | Requirements (SysML) |
 
+## Validation Workflow
+
+Every Mermaid diagram must pass validation before being shown to the user or written to a file. Follow this loop without skipping steps:
+
+1. **Write** the diagram inside a ` ```mermaid ` code block in a `.md` or `.mmd` file.
+2. **Validate** by running:
+   - `mermaid.sh validate -` (pipe diagram code to stdin for quick checks)
+   - `mermaid.sh validate <file>` (for `.md` or `.mmd` files)
+3. **Fix** every parser error reported. Read the error message carefully — it identifies the syntax issue and line.
+4. **Re-validate** after every fix. Repeat steps 2–4 until validation exits with code 0 (all diagrams valid).
+5. **Output** only after the last validation passes clean.
+
+**Rules:**
+- **Never output or show a diagram that hasn't passed validation.** If validation fails, fix and retry silently — do not present broken diagrams to the user.
+- **Only valid ` ```mermaid ` code blocks in `.md` or `.mmd` files are allowed.** No raw mermaid text, no ` ```mermaid-example ` fences, no other file extensions.
+- **Resolve every error.** Do not stop after fixing the first error — the parser may report one error at a time. Keep iterating until the exit code is 0.
+- **For stdin validation**, pipe just the diagram body (no fence markers):
+  ```bash
+  echo 'flowchart LR
+      A-->B' | mermaid.sh validate -
+  ```
+
 ## Gotchas
 
-- **Always validate after generating** — run `mermaid.sh validate -` with the diagram piped to stdin, or `mermaid.sh validate <file>` for files. Do this every time you generate a mermaid diagram, whether it's inline in a markdown block or written to `.md` or `.mmd` file. Fix any parser errors before presenting the diagram.
+- **Validation is mandatory, not optional** — run `mermaid.sh validate -` (stdin) or `mermaid.sh validate <file>` after every diagram you write. Fix all reported errors iteratively until exit code is 0. Never present an unvalidated or invalid diagram to the user.
+- **Parser reports one error at a time** — fixing one syntax error may reveal the next. Always re-validate after each fix; don't assume one pass is enough. A diagram with three typos will produce three separate validation rounds.
+- **Only `.md` and `.mmd` files** — write mermaid diagrams exclusively to `.md` (fenced blocks) or `.mmd` (raw diagram) files. Do not embed mermaid in `.txt`, `.html`, or other formats.
 - **The word `end` breaks flowcharts** — if a node label contains lowercase "end", capitalize it ("End") or wrap in quotes. Same applies to sequence diagrams: use parentheses, brackets, or quotes around the word.
 - **Leading `o` or `x` in flowchart nodes** — `A---oB` creates a circle edge, not a node named "oB". Add a space or capitalize: `A--- Ops`.
 - **Every example must start with ` ```mermaid`** — the validator extracts blocks matching this fence. Do not use ` ```mermaid-example` or other variants in final output.
 - **Beta diagrams use `-beta` suffix** — `radar-beta`, `architecture-beta`, `treemap-beta`, `venn-beta`, `wardley-beta`, `ishikawa-beta`. The keyword must include the suffix.
 - **`stateDiagram-v2` vs `stateDiagram`** — prefer `stateDiagram-v2` (newer renderer with composite states, concurrency). The older `stateDiagram` still works but lacks features.
 - **YAML frontmatter config** — diagram-level configuration goes between `---` fences before the diagram keyword. Use `config:` for per-diagram settings and `title:` for display titles.
-- **Validation uses the real parser** — run `mermaid.sh validate -` with diagram code piped to stdin. The script catches syntax errors the live editor would catch. Fix errors iteratively based on parser feedback.
+- **Use `--json` for scripted iteration** — `mermaid.sh validate --json -` outputs structured JSON, making it easier to parse errors when automating fix loops.
 
 ## References
 
