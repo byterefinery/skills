@@ -6,6 +6,7 @@ description: >
   JSON-based charts, declarative visualization, or wants to create bar charts, line charts, scatter
   plots, heatmaps, pie charts, area charts, boxplots, trellis/facet charts, layered compositions,
   geographic maps, or any data visualization using the Vega-Lite specification format (v6.4.3).
+  Every spec must be validated with vega-lite.sh before output; iterate until zero errors remain.
   Also use when the user asks about encoding channels (x, y, color, size, shape, theta, radius),
   mark types, transforms, aggregations, binning, time units, selections/interactions, or embedding
   Vega-Lite charts in web applications.
@@ -55,13 +56,23 @@ Vega-Lite recognizes four data types for encoding channels:
 
 ### Validation
 
-Every Vega-Lite spec you write **must** be validated with `vega-lite.sh` before it is considered final. If validation reports errors, fix them and re-validate until the spec passes cleanly. Never leave an invalid spec in a file.
+**Every Vega-Lite spec must pass validation before it is output or saved.** Invalid charts are never acceptable — not in drafts, not in examples, not in `.json` files, not in markdown code blocks.
+
+1. Write the spec
+2. Run `vega-lite.sh validate` on the file or pipe the spec via stdin
+3. If errors are reported, fix them and re-validate
+4. **Repeat until validation passes with zero errors**
+
+Do not consider a chart complete until `vega-lite.sh validate` exits with code 0. Do not output or save a spec that has not been validated.
 
 `vega-lite.sh` is the **only** way to validate Vega-Lite specs. Do not use online validators, manual schema checks, or any other tool.
 
 ```bash
 # Validate a markdown file (checks all ```vega-lite blocks)
 vega-lite.sh validate <file.md>
+
+# Validate a .json file
+vega-lite.sh validate <file.json>
 
 # Validate a directory recursively
 vega-lite.sh validate references/
@@ -70,7 +81,7 @@ vega-lite.sh validate references/
 echo '{"$schema":"...","data":{"values":[]},"mark":"bar"}' | vega-lite.sh validate -
 ```
 
-`vega-lite.sh` loads the local v6.4.3 JSON schema for strict validation. It extracts `vega-lite` code blocks from markdown, parses the JSON, and reports any schema violations with instance paths and error messages.
+`vega-lite.sh` loads the local v6.4.3 JSON schema for strict validation. It extracts `vega-lite` code blocks from markdown, parses the JSON, and reports schema violations with instance paths and error messages.
 
 ### Creating a Spec
 
@@ -96,7 +107,11 @@ Minimal valid spec structure:
 
 ## Gotchas
 
-- **Markdown vs JSON output** — In markdown, always use ` ```vega-lite ` fenced blocks. In `.json` files, dump the spec as raw JSON (no fences). A `.json` file containing markdown fences is not valid JSON.
+- **Never output an unvalidated chart** — If you write a spec, you validate it. If validation fails, you fix and re-validate. There is no shortcut. A chart with even one schema error is a broken chart.
+- **Self-check before running the validator** — Quick scan: balanced `{}` and `[]`, no trailing commas, all strings double-quoted, `$schema` present, encoding field names match data field names. Catching trivial JSON syntax errors saves a validation round-trip.
+- **Fix cascading errors from the top** — Schema validators report errors in document order. One missing field or wrong type near the top can produce multiple downstream errors. Fix the first error, re-validate, and let the cascade resolve before addressing what remains.
+- **JSON files must contain raw JSON** — A `.json` file must parse as a valid JSON object. No markdown fences, no comments, no trailing commas. Validate `.json` files with `vega-lite.sh validate <file.json>`.
+- **Code blocks must use the `vega-lite` language tag** — Use ```` ```vega-lite ```` not ```` ```json ```` or plain ```` ``` ````. The validator only extracts blocks tagged `vega-lite`. A spec in a `json`-tagged block will be silently skipped.
 - **Always include `$schema`** — Omitting it means `vega-lite.sh validate` cannot determine the spec version. Use `https://vega.github.io/schema/vega-lite/v6.json` for v6.x compatibility.
 - **Data must be accessible at runtime** — Specs using `"url"` for data need a running server or public URL. For validation and portability, use inline `"values"` arrays.
 - **Mark vs mark definition** — `"mark": "bar"` is shorthand; `"mark": {"type": "bar", "tooltip": true}` is the full object form. Use the object form when customizing mark properties like `filled`, `cornerRadius`, or `aria`.
@@ -107,7 +122,6 @@ Minimal valid spec structure:
 - **Composite marks are syntactic sugar** — `boxplot`, `errorband`, and `errorbar` compile to layered specs with multiple primitive marks. They have special mark properties (e.g., `extent`, `borders`).
 - **Facet vs concat** — `row`/`column` encodings create faceted views sharing data; `concat`/`hconcat`/`vconcat` compose independent specs side-by-side.
 - **`repeat` uses `{"repeat": "repeat"}` field reference** — In repeat specs, reference the repeated dimension with `{"repeat": "repeat"}` in encoding fields.
-- **`vega-lite.sh validate` only extracts fenced blocks** — When validating markdown, it looks for `vega-lite` fenced code blocks. Plain JSON embedded without fences in `.md` files will be silently skipped.
 
 ## References
 
