@@ -10,8 +10,6 @@ description: >
 metadata:
   tags:
     - meta
-    - spec
-    - devops
 ---
 
 # agentskills
@@ -76,11 +74,11 @@ uvx skills-ref validate ./my-skill
 ### Reading skill properties
 
 ```bash
-# Using skills-ref
-uvx skills-ref read-properties ./my-skill
-
 # Using skman
 skman.sh info ./my-skill
+
+# Using skills-ref
+uvx skills-ref read-properties ./my-skill
 ```
 
 ### Generating prompt XML
