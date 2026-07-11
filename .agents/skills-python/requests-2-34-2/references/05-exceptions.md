@@ -10,10 +10,10 @@ BaseException
                 ├── HTTPError                 # 4xx/5xx status (from raise_for_status)
                 ├── ConnectionError           # Network-level failure
                 │    ├── ProxyError           # Proxy connection failure
-                │    └── SSLError             # TLS/SSL handshake or cert error
-                ├── Timeout                   # Request timed out
+                │    ├── SSLError             # TLS/SSL handshake or cert error
                 │    └── ConnectTimeout       # Timed out connecting (safe to retry)
-                │         └── ReadTimeout     # Server didn't send data in time
+                ├── Timeout                   # Request timed out
+                │    └── ReadTimeout          # Server didn't send data in time
                 ├── URLRequired               # Missing URL
                 ├── TooManyRedirects          # Exceeded max_redirects (default 30)
                 ├── MissingSchema             # No http:// or https:// in URL
@@ -76,7 +76,7 @@ Base timeout exception. Catch this to handle both connect and read timeouts.
 **Retryable:** Yes — timeouts are typically transient.
 
 ### `ConnectTimeout`
-Connection to the server timed out. Subclass of both `ConnectionError` and `Timeout`.
+Connection to the server timed out. Subclass of both `ConnectionError` and `Timeout` (catchable by either).
 
 **Retryable:** Yes — explicitly safe to retry per requests documentation.
 

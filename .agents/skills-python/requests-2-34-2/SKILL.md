@@ -276,7 +276,7 @@ bool(requests.codes[500])      # True — some codes have aliases
 - **`stream=True` requires explicit `.close()`** — when streaming, the connection stays open until you consume all data and call `r.close()`. Use context managers (`with r:`) to avoid leaking connections.
 - **Redirects strip auth headers on cross-host redirects** — if redirected to a different hostname, the `Authorization` header is removed to prevent credential leakage. On same-host http→https redirect (standard ports), auth is preserved.
 - **POST body not rewindable on file objects** — if you pass an open file as `data` and the request needs to retry or redirect, requests tries to `seek()` back. Non-seekable streams (pipes, sockets) will fail with `UnrewindableBodyError`.
-- **`verify=False` silences InsecureRequestWarning** — setting `verify=False` triggers a warning by default. Suppress with `urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)` if intentional.
+- **`verify=False` triggers InsecureRequestWarning** — suppress with `import urllib3; urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)` if intentional.
 - **`Session.trust_env=True` reads proxy env vars** — in production, consider setting `s.trust_env = False` to avoid unexpected proxy configuration from environment.
 - **`data` vs `json` parameter** — `data=dict` sends `application/x-www-form-urlencoded`; `json=dict` sends `application/json`. They are mutually exclusive for body encoding (passing both uses `json` for the body and `data` is ignored for encoding).
 - **Default retries are zero** — `HTTPAdapter` defaults to no retries. Network blips will cause immediate failures unless you configure retries explicitly.

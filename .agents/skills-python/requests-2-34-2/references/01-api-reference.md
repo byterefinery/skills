@@ -147,3 +147,14 @@ requests.codes.service_unavailable   # 503
 | `REDIRECT_STATI` | `(301, 302, 303, 307, 308)` | Auto-processable redirect codes |
 | `CONTENT_CHUNK_SIZE` | 10240 | Default chunk size for `.content` |
 | `ITER_CHUNK_SIZE` | 512 | Default chunk size for `.iter_lines()` |
+
+## `requests.packages`
+
+Namespace for accessing requests' dependencies (urllib3, charset-normalizer/chardet, idna). Useful when you need urllib3 types without a separate import:
+
+```python
+from requests.packages import urllib3
+from requests.packages.urllib3.util.retry import Retry
+```
+
+Note: Direct imports (`import urllib3`) are preferred; `requests.packages` is provided for compatibility.
