@@ -102,14 +102,19 @@ A skill is a directory containing a `SKILL.md` file. Everything else is optional
 │   └── 01-topic.md
 │   └── 02-abc.md
 │   └── 03-xyz.md
+├── assets/               # Optional: templates, images, data files, schemas
+│   └── template.yaml
 ```
 
 ### Frontmatter Fields
 
 | Field | Required | Rules |
 |---|---|---|
-| `name` | Yes | 1-64 chars, lowercase a-z, 0-9, hyphens; no leading/trailing/consecutive hyphens; must match directory name exactly (e.g., `demo-skill-2-4-1` for `demo-skill-2-4-1/`); meta skills without versions use plain name (e.g., `skman`, `plan`) |
+| `name` | Yes | 1-64 chars, lowercase letters (including Unicode/i18n), 0-9, hyphens; no leading/trailing/consecutive hyphens; must match directory name exactly (e.g., `demo-skill-2-4-1` for `demo-skill-2-4-1/`); meta skills without versions use plain name (e.g., `skman`, `plan`) |
 | `description` | Yes | Non-empty, max 1024 chars, third-person, must not contain XML/HTML tags (`<tag>`) |
+| `license` | No | License name or reference to a bundled license file (e.g., `Apache-2.0`, `Proprietary. LICENSE.txt has complete terms`) |
+| `compatibility` | No | Max 500 chars. Environment requirements — intended product, system packages, network access. Only include if the skill has specific needs |
+| `allowed-tools` | No | Space-separated string of pre-approved tools the skill may use (experimental; support varies by agent) |
 | `metadata` | No | Optional object. May contain `tags` (array of strings, e.g., `["meta", "devops"]`). Validator warns if `metadata` is not a mapping or `tags` is not a string array.
 
 ### Frontmatter Template
@@ -118,9 +123,12 @@ A skill is a directory containing a `SKILL.md` file. Everything else is optional
 ---
 name: my-skill
 description: What this skill does and when to use it. Be specific.
+license: Apache-2.0
+compatibility: Requires Python 3.11+ and uv
+allowed-tools: Bash(git:*) Read
 metadata:
   tags:
-    - meta
+    - dev
 ---
 ```
 
@@ -132,7 +140,7 @@ Follow these steps in order:
 
 2. **Write the frontmatter** — exactly `name` and `description` at minimum. The `name` must match the directory name exactly (e.g., `name: demo-skill-2-4-1` for `demo-skill-2-4-1/`). The description determines when the agent loads this skill; make it specific.
 
-3. **Write the body** — concise instructions, under 500 lines. Must start with a level-1 heading matching `# <name>` or `# <name> <version>`. Structure:
+3. **Write the body** — concise instructions, under 5000 tokens. Must start with a level-1 heading matching `# <name>` or `# <name> <version>`. Structure:
    - `# <name>` (e.g., `# skman`) or `# <name> <version>` (e.g., `# demo-skill 2.4.1`)
    - `## Overview` — what it does
    - `## Usage` — Optional: how to use it with examples
@@ -178,7 +186,7 @@ Checks performed:
 - Description presence, length, and absence of XML/HTML tags
 - `metadata` structure (warns if present but not a mapping; warns if `tags` is not a string array)
 - Body starts with a level-1 heading
-- Body line count warning (>500 lines)
+- Body token estimation warning (>5000 tokens)
 - Name vs directory basename consistency (warns on mismatch)
 - H1 heading format (`# <name>` or `# <name> <version>` — errors on mismatch)
 - Recommended section presence (`## Overview` — warns if missing)
@@ -216,12 +224,12 @@ Checks performed:
 Skills use a four-level loading system:
 
 1. **Metadata** (name + description) — always in context (~100 words). Always visible to the agent.
-2. **SKILL.md body** — loaded on demand (<500 lines ideal). Contains the core instructions.
+2. **SKILL.md body** — loaded on demand (<5000 tokens ideal). Contains the core instructions.
 3. **Scripts** — executed (not loaded into context). Run via `<name>.sh`.
 4. **References** — loaded as needed (unlimited). Reference files load on demand.
 
 Guidelines:
-- Keep SKILL.md body under 500 lines
+- Keep SKILL.md body under 5000 tokens
 - Move detailed content to `references/` files linked from SKILL.md
 - Avoid deeply nested references — all reference files should link directly from SKILL.md
 - Include a table of contents in reference files longer than 100 lines
