@@ -1,9 +1,13 @@
 ---
 name: skman
-description: Scaffold, validate, and inspect agent skills (SKILL.md files). Use when creating new skills, checking skill format compliance, or reviewing skill structure.
+description: Introduces the Agent Skills System — a standardized, lightweight, open format for extending AI agent capabilities with specialized knowledge and workflows. Use for scaffolding, validating, and inspecting agent skills (SKILL.md files and other skill's files and directories).
 metadata:
   tags:
     - meta
+    - agent
+    - skill
+    - skills
+    - agent skill system
 ---
 
 # skman
@@ -12,7 +16,9 @@ Tools and guidelines for creating, validating, and managing agent skills. Use `s
 
 ## Overview
 
-`skman` is a skill for scaffolding, validating, and inspecting agent skills (SKILL.md files). It provides four functionalities:
+Agent Skills are a lightweight, open format for extending AI agent capabilities with specialized knowledge and workflows. An agent skill is a directory containing a `SKILL.md` file — frontmatter metadata (skill's YAML header) plus concise instructions — optionally accompanied by scripts, references, and assets. This standardized format gives agents new expertise on demand without bloating the context window.
+
+`skman` is the skill for creating, validating, and managing agent skills. It provides four functionalities:
 
 - **`create`** — Scaffold a new skill directory with SKILL.md, optional scripts, and references
 - **`validate`** — Check a skill against the format specification (frontmatter, naming, structure)
