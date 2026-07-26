@@ -1,38 +1,45 @@
 ---
 name: htm-3-1-1
-description: >
-  htm 3.1.1 — JSX-like syntax in plain JavaScript via Tagged Templates, no transpiler required.
-  Use when the project uses htm (not JSX/TSX), including htm/preact, htm/react, or
-  htm.bind(h) with custom hyperscript functions. Covers the $-braced component
-  syntax, auto-closing tags, spread props, babel-plugin-htm compilation, and htm/mini.
+description: >-
+  HTM (Hyperscript Tagged Markup) 3.1.1 — JSX-like syntax via JavaScript tagged
+  templates, no transpiler needed. Use when writing JSX-style markup in plain JS
+  (React, Preact, or custom hyperscript functions), avoiding build-step JSX
+  transforms, or developing directly in the browser. Covers binding, syntax rules,
+  prebuilt integrations (htm/preact, htm/react, htm/preact/standalone), htm/mini,
+  caching internals, spread props, babel-plugin-htm compilation, and
+  babel-plugin-transform-jsx-to-htm migration.
+license: Apache-2.0
+compatibility: Node.js or modern browser with ES module support and tagged template literals
 metadata:
   tags:
     - javascript
-    - templating
+    - jsx
     - virtual-dom
     - preact
     - react
+    - tagged-template
+    - babel
 ---
 
 # htm 3.1.1
 
-htm (Hyperscript Tagged Markup) is a library that lets you write JSX-like markup inside
-plain JavaScript tagged template literals — no transpiler needed. It parses the template
-and calls a hyperscript function `h(type, props, ...children)` for each element.
-
 ## Overview
 
-htm works by binding a tagged template function to a hyperscript `h()` function. The
-tagged template parses HTML-like syntax and translates it into `h()` calls. It is
-framework-agnostic: works with Preact, React, lit-html, vhtml, or any custom `h()` function.
+HTM parses JavaScript tagged template literals into calls to a hyperscript `h(type, props, ...children)` function, producing JSX-like markup with zero transpiler. It uses a character-by-character state machine to compile templates into cached operation lists, then evaluates them by driving `h()` calls.
 
-**Core difference from JSX**: htm uses JavaScript tagged templates at runtime (or compiles
-via `babel-plugin-htm`), while JSX requires a compile step. The syntax is close to JSX but
-has distinct differences in how components, expressions, and spreads are written.
+Core API is a single default export — bind it to any hyperscript-compatible function:
+
+```js
+import htm from 'htm';
+const html = htm.bind(h);
+const result = html`<div id=${id}>Hello</div>`;
+```
+
+Prebuilt bindings: `htm/preact` (re-exports `h`, `Component`, `render`), `htm/react` (exports `html` only), `htm/preact/standalone` (Preact + HTM + hooks in one import, ~3.5 KB gzipped). `htm/mini` drops caching (~450 bytes). `babel-plugin-htm` compiles HTM away at build time for zero runtime cost.
 
 ## Usage
 
-### Basic binding
+### Binding to a custom hyperscript function
 
 ```js
 import htm from 'htm';
@@ -43,329 +50,158 @@ function h(type, props, ...children) {
 
 const html = htm.bind(h);
 
-html`<h1 id=hello>Hello world!</h1>`
+html`<h1 id=hello>Hello world!</h1>`;
 // { type: 'h1', props: { id: 'hello' }, children: ['Hello world!'] }
 ```
 
-### Preact
+### Prebuilt Preact integration
 
 ```js
-import { html, render } from 'htm/preact';
+import { html, render, h, Component } from 'htm/preact';
 
-const App = () => html`<h1>Hello</h1>`;
-render(html`<${App} />`, document.body);
+render(html`<a href="/">Hello!</a>`, document.body);
 ```
 
-### React
+### Prebuilt React integration
 
 ```js
 import ReactDOM from 'react-dom';
 import { html } from 'htm/react';
 
-const App = () => html`<h1>Hello</h1>`;
-ReactDOM.render(html`<${App} />`, document.body);
+ReactDOM.render(html`<a href="/">Hello!</a>`, document.body);
 ```
 
-### Standalone Preact (single import, no build tool)
+### Standalone Preact (single import, no dependencies)
 
 ```js
-import { html, Component, render } from 'https://unpkg.com/htm/preact/standalone.module.js';
+import {
+  html, render, h, Component,
+  useState, useEffect, useRef, useMemo, useCallback, useContext
+} from 'htm/preact/standalone';
 ```
 
-### Dynamic values
-
-Use `${}` (template literal interpolation) for expressions — not JSX-style `{}`:
+Or direct from CDN:
 
 ```js
-const name = 'world';
-html`<h1>Hello ${name}!</h1>`;
-html`<a href=${url} onClick=${handler}>Click</a>`;
+import { html, render } from 'https://unpkg.com/htm/preact/standalone.module.js';
 ```
 
-### Props
+### Component syntax
+
+Components are JS values — use `<${...}>` (not `<Foo />`):
 
 ```js
-// Static string values — quotes optional
-html`<div class=foo id=bar></div>`;
-html`<div class="foo bar"></div>`;
+const Header = ({ name }) => html`<h1>${name}</h1>`;
 
-// Boolean attributes
-html`<input disabled />`;
-html`<input draggable />`;
-
-// Dynamic values
-html`<a href=${url} />`;
-
-// Spread props — use ...${}, not {...}
-html`<div ...${props}></div>`;
-html`<div class=wrapper ...${extraProps}></div>`;
-
-// Concatenated prop values
-html`<a href="/path/${id}" />`;  // "/path/42"
+html`<${Header} name="App" />`;        // self-closing
+html`<${Header} name="App"><//>`;      // auto-closing end tag
+html`<${Header} name="App">body</${Header}>`;  // explicit end tag
 ```
 
-### Children
+### Spread props
 
 ```js
-// Text children
-html`<p>Hello world</p>`;
-
-// Dynamic children
-html`<p>${greeting}</p>`;
-
-// Element children
-html`<div><span>nested</span></div>`;
-
-// Mixed children
-html`<div>before <span>middle</span> after</div>`;
-
-// Arrays and conditionals
-html`<ul>
-  ${items.map(item => html`<li key=${item.id}>${item.name}</li>`)}
-</ul>`;
+const props = { id: 'main', class: 'container' };
+html`<div ...${props}>content</div>`;
 ```
 
-### Multiple root elements (fragments)
-
-htm supports multiple roots natively — returns an array:
+Multiple spreads merge left-to-right via `Object.assign()`. The original spread object is never mutated.
 
 ```js
-html`<div /><div />`
-// [{ tag: 'div', ... }, { tag: 'div', ... }]
+html`<a ...${base} ...${extra} href="/override" />`;
 ```
 
-### HTML comments
+### Dynamic interpolation
 
 ```js
-html`<div><!-- this is a comment --></div>`;
+html`<span>Hello ${name}!</span>`;
+html`<a href="/user/${id}/edit" />`;   // values concatenate as strings
 ```
 
-### htm/mini
+### Boolean attributes
 
-Smaller build (~450 bytes) with no template caching:
+Bare names (no `=`) always produce `true`:
+
+```js
+html`<input disabled checked />`;      // { disabled: true, checked: true }
+```
+
+### Optional quotes
+
+Values without whitespace or special chars need no quotes:
+
+```js
+html`<div class=foo id=bar />`;        // { class: 'foo', id: 'bar' }
+```
+
+### HTML comments (fully stripped)
+
+```js
+html`<div><!-- comment --><span /></div>`;
+```
+
+### Fragments (multiple roots)
+
+```js
+html`<div /><span />`;  // [h('div'), h('span')]
+```
+
+Single root returns the element directly. Empty template returns `undefined`.
+
+### htm/mini — no caching, smaller
 
 ```js
 import htm from 'htm/mini';
 const html = htm.bind(h);
 ```
 
-### babel-plugin-htm
+Disables template caching. Uses flat arrays instead of operation lists internally.
 
-Compile htm at build time for zero runtime cost:
+### Babel compilation — zero runtime cost
 
-```js
-// .babelrc
+```json
 {
   "plugins": [
-    ["babel-plugin-htm", {
-      "pragma": "h",
-      "tag": "html"
-    }]
+    ["htm", { "pragma": "React.createElement" }]
   ]
 }
 ```
 
+Transforms `html`<div>Hello</div>` into `React.createElement("div", null, "Hello")` — the `htm` runtime becomes unnecessary and tree-shakes away.
+
+Key options:
+
+- `pragma` — target function (default `"h"`, `"React.createElement"`, or `false` for plain objects)
+- `tag` — tagged template name to process (default `"html"`)
+- `import` — auto-import the pragma module (string or `{module, export}` object)
+- `useBuiltIns` — use native `Object.assign` for spreads (default `false`, uses Babel `_extends`)
+- `useNativeSpread` — use `{ ...b }` spread syntax (takes precedence over `useBuiltIns`)
+- `variableArity` — `false` for fixed 3-arg `h(type, props, children[])` (default `true`, variable args)
+- `pragma=false` — output plain `{ tag, props, children }` objects
+- `monomorphic` — all nodes share uniform object shape with `type` discriminator
+
 ## Gotchas
 
-### Component opening syntax: `<${Foo}>` not `<Foo>`
-
-This is the biggest difference from JSX. Components must be opened with `<${ComponentName}>`:
-
-```js
-// htm — correct
-html`<${Foo} />`
-html`<${Foo} name=${name}>content</${Foo}>`
-
-// JSX — does NOT work in htm
-html`<Foo />`        // parsed as literal tag name "Foo"
-html`<Foo>content</Foo>`  // same — literal tag name "Foo"
-```
-
-The `<${}>` wrapper tells htm to evaluate the JavaScript expression as the component
-reference. Without it, the tag name is treated as a plain string.
-
-### Component closing: three options
-
-Components have three closing styles:
-
-1. **Self-closing** — `<${Foo} />` or `<${Foo}/>`. No children.
-2. **Explicit end tag** — `<${Foo}>content</${Foo}>`. The closing tag must match with `<${...}>` syntax.
-3. **Auto-closing** — `<${Foo}>content<//>`. The `<//>` shorthand closes the most recent open tag.
-
-```js
-// All three are valid
-html`<${Foo} />`
-html`<${Foo}>content</${Foo}>`
-html`<${Foo}>content<//>`
-
-// Nested with auto-close
-html`<${Outer}><${Inner}><//>more<//>`
-```
-
-### Mixing component closing styles in nesting
-
-With `<//>`, the auto-close always closes the **most recently opened** tag. Be careful with nesting:
-
-```js
-// Correct nesting with <//>
-html`<${A}><${B}><//>text after B<//>`
-
-// This works too — explicit closing mixed with auto
-html`<${A}><${B}></${B}>text<//>`
-```
-
-### `<//>` works for any tag, not just components
-
-The auto-close `<//>` closes any open tag — HTML elements and components alike:
-
-```js
-html`<div>content<//>`           // same as <div>content</div>
-html`<${Foo}>content<//>`        // same as <${Foo}>content</${Foo}>
-```
-
-### Expressions use `${}`, not `{}`
-
-JSX uses `{expression}` everywhere. htm uses `${expression}` (template literal interpolation):
-
-```js
-// htm
-html`<div class=${cls}>${text}</div>`
-
-// JSX equivalent
-<div className={cls}>{text}</div>
-```
-
-Inside the tag name position, use `<${expr}>` for dynamic tags/components.
-
-### Spread props use `...${}`, not `{...}`
-
-```js
-// htm
-html`<div ...${props}></div>`
-
-// JSX equivalent
-<div {...props}></div>
-```
-
-### Slash in tag names and prop names self-closes
-
-A `/` character in the middle of a tag name or prop name acts as a self-close:
-
-```js
-html`<ab/ba>`     // parsed as self-closing <ab> — "ba" is ignored
-html`<a pr/op>`   // parsed as <a pr> — self-closing, "op" ignored
-```
-
-However, `/` inside a **prop value** does NOT self-close unless immediately followed by `>`:
-
-```js
-html`<a href=val/ue></a>`    // props: { href: 'val/ue' }, NOT self-closed
-html`<a href=value/>`        // props: { href: 'value' }, self-closed (the /> ends the tag)
-html`<a href=value/ ></a>`   // props: { href: 'value/' }, NOT self-closed (space before >)
-```
-
-### Unquoted attribute values
-
-htm supports HTML-style unquoted values, but only for simple tokens (no spaces):
-
-```js
-html`<div class=foo></div>`     // { class: 'foo' }
-html`<div class="foo bar"></div>` // { class: 'foo bar' }
-// html`<div class=foo bar></div>` — "bar" is a separate boolean attribute
-```
-
-### Empty templates return `undefined`
-
-```js
-html``  // undefined
-```
-
-Non-element text returns the text directly (or an array for mixed content):
-
-```js
-html`hello`       // "hello"
-html`${1}`        // 1
-html`a${1}b`      // ["a", 1, "b"]
-```
-
-### Caching: static subtrees are reused
-
-htm caches parsed template structures. Identical static templates return the **same object reference**:
-
-```js
-const a = html`<div>static</div>`;
-const b = html`<div>static</div>`;
-a === b;  // true — same cached object
-```
-
-This is an optimization, not a bug. If your `h()` function mutates returned objects, cache reuse will cause issues. Use `htm/mini` or set `this[0] = 3` in your `h` function to disable caching.
-
-### `this[0]` staticness bits in `h()`
-
-When htm calls your `h()` function, `this` is the operation list and `this[0]` contains staticness bits:
-
-- `0` — fully static subtree (no dynamic values)
-- `1` — dynamic props, static children
-- `2` — static props, some dynamic children
-- `3` — dynamic props and dynamic children
-
-You can modify `this[0]` to force a subtree to be treated as static (enabling caching):
-
-```js
-function h(type, props, ...children) {
-  if (props['@static']) {
-    this[0] &= ~3;  // force static
-  }
-  return { type, props, children };
-}
-```
-
-### Spread objects are not mutated
-
-htm does not mutate the spread source objects:
-
-```js
-const obj = {};
-html`<div ...${obj} foo=bar></div>`;
-obj;  // still {}
-```
-
-### Dynamic tag names
-
-Use `<${expr}>` for dynamic tag names (works for both HTML tags and components):
-
-```js
-const tag = 'h1';
-html`<${tag}>Hello</${tag}>`;
-
-const Component = SomeComponent;
-html`<${Component} />`;
-```
-
-### Case-sensitive prop names
-
-htm preserves case in prop names, which matters for React's camelCase props:
-
-```js
-html`<div onClick=${handler} />`  // { onClick: handler }
-html`<div onclick=${handler} />`  // { onclick: handler }
-```
-
-### The `html` tag name is a convention
-
-The variable name `html` is just a convention. You can name it anything:
-
-```js
-const htm_ = htm.bind(h);
-htm_`<div>hello</div>`;
-```
-
-For `babel-plugin-htm`, configure the tag name with the `tag` option.
+- **`htm` never inspects `h()` return values** — it only drives the call signature. Result shape is entirely your `h()` function's responsibility.
+- **Caching is per-bound-function** — `htm.bind(h1)` and `htm.bind(h2)` maintain separate caches. `htm/mini` disables caching entirely. To disable caching in default build, add `this[0] = 3;` at the start of your `h()` function.
+- **`<${Foo}>`, not `<Foo />`** — component references must be JS expressions inside `<${...}>`. Plain `<Foo />` would parse `Foo` as a literal tag name string.
+- **Spread is `...${...}`, not `{...}`** — unlike JSX `{...props}`, HTM uses `...${props}` without curly braces around the spread.
+- **`<//>` auto-closes the nearest open tag** — essential when the component is a variable: `<${Comp}><//>`.
+- **Slash in tag/prop names triggers self-close** — `<ab/ba>` parses as self-closing `<ab>`. `<a pr/op=v>` treats `pr` as boolean prop, self-closes.
+- **Slash in property values** — preserved unless followed by `>`: `<a href=val/ue>` keeps the slash; `<a href=value/>` self-closes with `href: 'value'`.
+- **Empty template returns `undefined`** — `html`` is `undefined`, not `''` or `[]`.
+- **Non-element roots** — `html`foo` returns `'foo'`. `html`a${1}b` returns `['a', 1, 'b']`.
+- **`htm/preact` re-exports Preact core** — `h`, `Component`, `render` come from Preact. No separate import needed.
+- **`htm/preact/standalone` re-exports hooks** — `useState`, `useEffect`, `useRef`, `useMemo`, `useCallback`, `useContext`, `useReducer`, `useLayoutEffect`, `useImperativeHandle`, `useDebugValue`, `useErrorBoundary`, plus `createContext`.
+- **`htm/react` exports only `html`** — import `render`, `Component`, hooks from `react` / `react-dom` directly.
+- **`babel-plugin-htm` processes only `html` tag by default** — use `tag` option for custom names. Tag name can be a regex pattern (e.g., `"/^html$/"`).
+- **First evaluation is slower** — `evaluate()` rewrites the operation list in-place after first run, replacing `CHILD_RECURSE` with `CHILD_APPEND` for static children. Subsequent calls skip recursion.
+- **`htm` is framework-agnostic** — bind it to `vhtml` for string HTML, `jsxobj` for config objects, or any custom `h()` function.
+- **NUL characters are preserved** — in attribute values and text content, `\0` passes through without special handling.
 
 ## References
 
-- [01-component-syntax](references/01-component-syntax.md) — Component opening, closing, and nesting patterns
-- [02-h-function](references/02-h-function.md) — Custom hyperscript functions, binding, and the h() contract
-- [03-caching](references/03-caching.md) — Template caching internals, staticness bits, and htm/mini
-- [04-babel-plugin](references/04-babel-plugin.md) — babel-plugin-htm and babel-plugin-transform-jsx-to-htm
-- [05-integrations](references/05-integrations.md) — htm/preact, htm/react, and standalone builds
+- [01-syntax-reference](references/01-syntax-reference.md) — Full syntax rules, tag modes, attribute parsing, edge cases
+- [02-internal-architecture](references/02-internal-architecture.md) — Operation list format, caching, `build()` / `evaluate()` pipeline, `treeify()`
+- [03-integrations](references/03-integrations.md) — Preact, React, vhtml, jsxobj bindings, standalone bundles, CDN imports
+- [04-babel-plugins](references/04-babel-plugins.md) — `babel-plugin-htm` options, `babel-plugin-transform-jsx-to-htm`, compilation patterns
