@@ -55,7 +55,7 @@ The primary workflow takes one source — a file path or URL — and produces an
 **Chunked ingestion.** Large sources are processed iteratively:
 
 - Convert the full source to markdown first (`markdown.sh to-md <file>` or `webfetch.sh <url>`). For PDF, the converter inserts `<!-- page N -->` comments — use these for `location`.
-- Split into chunks of manageable size (e.g. 500–1000 lines each).
+- **Always read 500 lines at a time** — split into fixed 500-line chunks. Do not skip any parts. Proceed linearly from top to bottom.
 - Process each chunk with a **sliding window**: tail of previous chunk + full current chunk + head of next chunk. This preserves context for concepts spanning boundaries — table headers on one page with data on the next, sentences split across slides, formula references across sheets.
 - Record `location` (pages, slides, sheets, sections) for every source reference.
 - After all chunks, merge extracted concepts — deduplicate by title/content, merge `sources` entries from different chunks.
