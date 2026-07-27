@@ -270,14 +270,18 @@ def yaml_serialize(obj, indent=0):
     if isinstance(obj, float):
         return str(obj)
     if isinstance(obj, str):
-        if any(ch in obj for ch in ':{}[]#&*!|>\"\'%@`') or obj.startswith('- ') or obj in ('null', 'true', 'false', 'yes', 'no'):
+        if (any(ch in obj for ch in ':{}[]#&*!|>\"\'%@`')
+                or obj.startswith('- ')
+                or obj in ('null', 'true', 'false', 'yes', 'no')
+                or obj.isdigit()
+                or (obj.replace('.', '', 1).isdigit() and '.' in obj)):
             escaped = obj.replace('\\', '\\\\').replace('"', '\\"')
             return f'"{escaped}"'
         return obj
     if isinstance(obj, list):
         if not obj:
             return '[]'
-        if all(isinstance(item, str) for item in obj):
+        if all(isinstance(item, (str, int, float, bool)) for item in obj):
             return '[' + ', '.join(yaml_serialize(item, indent) for item in obj) + ']'
         lines = []
         for item in obj:

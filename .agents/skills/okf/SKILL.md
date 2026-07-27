@@ -30,12 +30,29 @@ OKF bundles are designed to be usable **without the original source files ever b
 
 It is up to the **LLM** to summarize, format, and transform content. It is up to the **script** to organize the deterministic structure of YAML frontmatter.
 
+### Default behavior
+
+Unless the user specifies otherwise, assume:
+
+- **High fidelity** — preserve all content for all concepts
+- **Full coverage** — produce summaries, entity pages, concept pages, comparisons, an overview, and a synthesis. Do not stop at raw extraction; derive value from the content
+- **Complete input coverage** — cover every section of the input file. Never skip sections. After producing the bundle, go back and verify every section was covered. If anything was missed, fix it. Only skip sections if the user explicitly requests specific parts
+- **Auto-maintenance** — create pages, update them when new sources arrive, maintain cross-references, keep everything consistent. When a new source is added, check existing concepts for overlap and update or cross-link
+- **Valid relative paths** — all output file paths are relative and valid. Cross-links and `index.md` links resolve correctly from the linking document's directory
+- **Source preservation** — store converted source markdown in `src/` inside the bundle:
+  - PDF/Office/Markdown/Text files: same basename (e.g., `ABC.pdf` → `src/ABC.md`)
+  - URLs: semantic filename without special characters (e.g., `https://docs.example.com/api-guide` → `src/api-guide.md`)
+- **Log updates** — always write and keep `log.md` updated. Record every creation, update, and deprecation with ISO 8601 date headings, newest first
+
 ## Bundle Structure
 
 ```
 bundle/
   index.md                      # Optional: directory listing with progressive disclosure
   log.md                        # Optional: chronological update history
+  src/                          # Converted source markdown (preserved for reference)
+    ABC.md                      # From ABC.pdf
+    quarterly-results.md        # From URL (semantic name, no special chars)
   documents/
     annual-report-2024.md       # Concept: extracted from PDF
     product-spec.md             # Concept: extracted from docx
@@ -140,13 +157,13 @@ The agent controls how much content to preserve. Three levels:
 ### Output quality
 
 Every OKF document must be:
-- **Non-empty body** — every concept must have body content after frontmatter. A concept with frontmatter but no body is useless. If you cannot produce meaningful body content, do not create the concept.
-- **Language preservation** — each section keeps the language of its source material. A document may be multi-lingual: a German section stays German, an English appendix stays English. Never translate. For filenames: pick the dominant language of the content. If the content is evenly split or you cannot determine a dominant language, fallback to English. This keeps the bundle consistent and intuitive for the end-user.
+- **Non-empty body** — every concept needs body content. If you cannot produce meaningful content, do not create the concept.
+- **Language preservation** — each section keeps its source language. Never translate. For filenames: pick the dominant language. If undetermined, fallback to English.
 - **Valid markdown** — correct syntax for headings, lists, tables, code blocks, links, footnotes
 - **Concise** — no filler, no preamble, no reasoning narration in the body
 - **Clean** — no page artifacts, no repeated headers, no boilerplate
 - **Well-structured** — logical heading hierarchy, consistent formatting, readable flow
-- **Right-sized** — not too long (split into multiple concepts if needed), not too short (merge related content). Use `ingest` for large documents; use `write-doc` for focused concepts.
+- **Right-sized** — not too long (split via `ingest`), not too short (merge related content)
 
 ## CLI Reference
 
@@ -169,20 +186,22 @@ Full CLI reference with all options and piping examples: [04-cli-reference](refe
 
 ### Processing a PDF or Office Document
 
-1. Convert source to markdown: `markdown.sh to-md report.pdf -o ./tmp/report.md`
+1. Convert source to markdown: `markdown.sh to-md ABC.pdf -o ./bundle/src/ABC.md`
 2. Create bundle: `okf.sh create-bundle --bundle ./bundle --version 0.2`
-3. Read the markdown, apply fidelity rules, strip page artifacts, compose clean concept body
-4. Write the concept or use `ingest` for large documents:
+3. Read the converted markdown, strip page artifacts, compose clean concept body
+4. Write concepts or use `ingest` for large documents:
    ```bash
-   cat ./tmp/report.md | okf.sh ingest --bundle ./bundle --body - --type Document --output-dir documents
+   cat ./bundle/src/ABC.md | okf.sh ingest --bundle ./bundle --body - --type Document --output-dir documents
    ```
-5. Validate: `okf.sh validate --bundle ./bundle`
+5. Generate overview, synthesis, entity pages, comparisons as needed
+6. Validate: `okf.sh validate --bundle ./bundle`
 
 ### Processing a URL
 
-1. Fetch the page as markdown using `webfetch`
-2. Agent reads content, applies fidelity rules (medium strips nav/boilerplate), composes concept
-3. Write: `okf.sh write-doc --bundle ./bundle --concept documents/page --type Document --resource "https://example.com/page"`
+1. Fetch the page as markdown: `webfetch.sh fetch https://docs.example.com/api-guide -o ./bundle/src/api-guide.md`
+2. Agent reads content, composes concepts
+3. Write: `okf.sh write-doc --bundle ./bundle --concept documents/api-guide --type Document --resource "https://docs.example.com/api-guide"`
+4. Generate overview, synthesis, entity pages, comparisons as needed
 
 ### Piping from webfetch and websearch
 
@@ -191,11 +210,11 @@ webfetch.sh fetch https://example.com | okf.sh ingest --bundle ./bundle --body -
 websearch.sh "query" | okf.sh write-doc --bundle ./bundle --concept references/search --type Reference --body -
 ```
 
-Full piping examples: [04-cli-reference](references/04-cli-reference.md).
+Always save the fetched source markdown to `src/` before processing. Full piping examples: [04-cli-reference](references/04-cli-reference.md).
 
 ### Log files
 
-`log.md` records chronological change history. Flat list of date-grouped entries, newest first:
+`log.md` records chronological change history. Always write it and keep it updated — every creation, update, and deprecation goes in. Flat list of date-grouped entries, newest first:
 
 ```markdown
 # Directory Update Log
@@ -208,7 +227,7 @@ Full piping examples: [04-cli-reference](references/04-cli-reference.md).
 * **Initialization**: Created bundle with `okf.sh create-bundle`.
 ```
 
-Date headings MUST use ISO 8601 `YYYY-MM-DD` form. Leading bold words (`**Update**`, `**Creation**`, `**Deprecation**`) are convention, not requirement.
+Date headings MUST use ISO 8601 `YYYY-MM-DD` form. Leading bold words (`**Update**`, `**Creation**`, `**Deprecation**`) are convention, not requirement. All links in `log.md` use relative paths.
 
 ### Enriching an Existing Concept
 
@@ -256,31 +275,30 @@ The footnote label is the join key into `sources`; consumers resolve attribution
 
 ## Gotchas
 
-- **`type` is the only required frontmatter field** — a concept with just `type` is conformant. All other fields are optional. Their absence carries meaning (unverified ≠ rejected).
-- **Body must never be empty** — every concept needs body content. Frontmatter alone is not enough. If you cannot produce meaningful body content, do not create the concept.
-- **Language follows input** — each section keeps its source language; documents may be multi-lingual. Never translate. For filenames: pick the dominant language of the content. If undetermined, fallback to English.
-- **`generated` is auto-filled** — leave it unset in your frontmatter and the tool records actor and timestamp. Only override if you need a specific value.
-- **`sources` must not shrink** — when augmenting, always include existing sources plus new ones. The validator catches missing entries.
-- **Always record source locations** — `pages` for PDF/Word, `sheets` for Excel, `resource` for URLs. This lets users and agents verify later that content was really there. Never omit this.
-- **Cross-links use relative paths** — `[budget](budget.md)`, not `[budget](/documents/budget.md)`. Absolute paths break GitHub rendering.
-- **Footnote labels must match `sources[].id`** — the label `[^my-source]` must correspond to a `sources` entry with `id: my-source`. Consumers resolve attribution through the matching entry, not the footnote prose.
-- **Reference files need numeric prefixes for ordering** — use `01-topic.md`, `02-topic.md` etc. when a references directory has many files.
-- **`index.md` and `log.md` are reserved** — they cannot be used as concept document names. The tool skips them in `list` output.
-- **`log.md` uses date-grouped entries** — newest first, ISO 8601 `YYYY-MM-DD` date headings. See the log files section above for format.
-- **YAML frontmatter is parsed with a stdlib-only subset parser** — it handles mappings, lists, inline `{maps}` and `[lists]`, quoted strings, and scalars. It does NOT handle multi-line strings (`|`, `>`), anchors (`&`, `*`), or tags beyond `!!str`/`!!float`/`!!int`/`!!bool`.
-- **Trust tiers are derived, not stored** — `unverified` (no `verified`), `machine-confirmed` (non-`human:` actors only), `human-reviewed` (has `human:` actor). The tool does not compute tiers; this is for the consuming agent.
-- **Actor convention** — use `<producer>/<version>` for tools, `human:<id>` for people, `process:<id>` for automated processes. Trust tier derivation keys off the `human:` prefix.
-- **Document conversion is not this skill's job** — use `markdown.sh to-md` for PDF/Office files, `webfetch` for URLs. This skill only manages the resulting OKF bundle.
-- **Page artifacts must be stripped** — page numbers, repeated headers/footers, watermarks. The LLM merges split content across page boundaries into continuous, coherent text.
-- **Content is split intelligently, not copied verbatim** — OKF is lossy but preserves meaning. The result must recreate the original semantically if needed.
-- **Documents should be right-sized** — not too long (split via `ingest`), not too short (merge related sections). A concept covers one coherent topic.
+- **`type` is the only required frontmatter field** — a concept with just `type` is conformant.
+- **Body must never be empty** — if you cannot produce meaningful body content, do not create the concept.
+- **Language follows input** — each section keeps its source language. Never translate. For filenames: pick the dominant language. If undetermined, fallback to English.
+- **`generated` is auto-filled** — leave it unset and the tool records actor and timestamp.
+- **`sources` must not shrink** — when augmenting, merge tags and sources (union, never shrink).
+- **Always record source locations** — `pages` for PDF/Word, `sheets` for Excel, `resource` for URLs.
+- **Cross-links use relative paths** — `[budget](budget.md)`, not `[budget](/documents/budget.md)`. All output paths must be relative and valid.
+- **Footnote labels must match `sources[].id`** — the label `[^my-source]` must correspond to a `sources` entry with `id: my-source`.
+- **Reference files need numeric prefixes** — use `01-topic.md`, `02-topic.md` etc.
+- **`index.md` and `log.md` are reserved** — cannot be used as concept document names.
+- **Always save source markdown to `src/`** — PDF/Office/Text: same basename (`ABC.pdf` → `src/ABC.md`). URLs: semantic name, no special chars (`src/api-guide.md`).
+- **URL filenames must be filesystem-safe** — strip special characters, use hyphens, lowercase.
+- **Default is high fidelity with full coverage** — produce summaries, entity pages, concept pages, comparisons, overview, and synthesis.
+- **Always cover every input section** — never skip. After producing the bundle, verify every section was covered; if anything was missed, fix it. Only skip if the user requests specific parts.
+- **Auto-maintain the bundle** — when new sources arrive, check existing concepts for overlap. Update or cross-link.
+- **Always write and update `log.md`** — record every creation, update, and deprecation. Date-grouped, newest first.
+- **`index.md` uses relative paths** — all links resolve from the index's directory. Never use absolute `/` paths.
+- **Page artifacts must be stripped** — page numbers, repeated headers/footers, watermarks. Merge split content across page boundaries.
+- **Content is split intelligently** — OKF is lossy but preserves meaning. Result must recreate the original semantically if needed.
+- **Documents should be right-sized** — not too long (split via `ingest`), not too short (merge related sections).
 - **Always produce valid markdown** — correct heading hierarchy, proper list syntax, well-formed tables, fenced code blocks with language hints, working links and footnotes.
-- **Fidelity defaults to `high`** — agent preserves all content unless instructed otherwise. Financial data, tables, and numbers are never lost.
-- **Fidelity is the agent's job** — the agent decides how much to summarize/filter when composing concept documents.
 - **`--bundle` is always first argument** — every subcommand takes `--bundle` before other options.
-- **`--body -` reads from stdin** — use `-` as the body value to pipe content. Works with `write-doc` and `ingest`.
-- **`ingest` splits at H1 headings** — each `# Heading` becomes a separate concept. H2/H3 headings stay within their parent concept.
-- **Comprehensive coverage is the default** — OKF bundles must be usable without original sources. Cover every aspect: all tables, numbers, definitions, procedures, examples, code blocks, lists, and structured content.
+- **`--body -` reads from stdin** — use `-` as the body value to pipe content.
+- **`ingest` splits at H1 headings** — each `# Heading` becomes a separate concept.
 
 ## References
 

@@ -147,7 +147,7 @@ Consumers that classify trust key off the `human:` prefix, so producers MUST use
 
 ## Index Files
 
-`index.md` enumerates directory contents for progressive disclosure. No frontmatter (except bundle root may carry `okf_version`). Body uses sections with bulleted lists:
+`index.md` enumerates directory contents for progressive disclosure. No frontmatter (except bundle root may carry `okf_version`). Body uses sections with bulleted lists. All links use file-relative paths that resolve from the index's directory:
 
 ```markdown
 # Documents
@@ -155,6 +155,8 @@ Consumers that classify trust key off the `human:` prefix, so producers MUST use
 * [Annual Report 2024](documents/annual-report-2024.md) - Q1-Q4 financial and operational results.
 * [Product Specification](documents/product-spec.md) - Technical requirements and design.
 ```
+
+Never use absolute `/` paths in `index.md` — they break GitHub rendering.
 
 ## Log Files
 

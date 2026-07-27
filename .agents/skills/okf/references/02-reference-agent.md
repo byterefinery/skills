@@ -75,9 +75,13 @@ Rules:
 
 OKF bundles must be usable **without the original source files ever being present again**. The process is lossy — meaning is preserved, verbatim copy is not required — but the result must recreate the original semantically if needed.
 
+**Default behavior**: high fidelity, full coverage. Produce summaries, entity pages, concept pages, comparisons, an overview, and a synthesis. Cover every section of the input — never skip sections. After producing the bundle, verify every section was covered; if anything was missed, fix it. When new sources arrive, check existing concepts for overlap — update or cross-link. Keep everything consistent. Always write and update `log.md`. All paths in `index.md` use relative paths.
+
 **Page-aware processing**: source markdown from PDFs often carries page numbers, repeated headers/footers, and content split across page boundaries. Strip page artifacts, merge split content into continuous text, and group coherent content together.
 
-**Output quality**: produce valid, clean, well-structured markdown. Concise — no filler, no preamble, no reasoning narration. Right-sized — not too long (split into multiple concepts), not too short (merge related content).
+**Source preservation**: save converted source markdown to `src/` inside the bundle. PDF/Office/Text: same basename (`ABC.pdf` → `src/ABC.md`). URLs: semantic name without special chars (`src/api-guide.md`).
+
+**Output quality**: produce valid, clean, well-structured markdown. Concise — no filler, no preamble, no reasoning narration. Right-sized — not too long (split into multiple concepts), not too short (merge related content). All paths relative and valid.
 
 **Always preserve** (regardless of fidelity level):
 - All headings (document structure)
