@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# okf.sh — Open Knowledge Format (OKF v0.2) bundle tooling
-# Delegates to _okf.py for deterministic operations.
+# okf.sh — Open Knowledge Format (OKF) bundle management
+# Delegates to _okf.py for parsing, validation, and document I/O.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

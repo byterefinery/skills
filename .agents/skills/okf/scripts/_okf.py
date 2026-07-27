@@ -1,1176 +1,871 @@
-#!/usr/bin/env python3
-"""okf — Open Knowledge Format (OKF v0.2) bundle tooling.
+"""OKF (Open Knowledge Format) bundle management tool.
 
-Deterministic CLI for creating, reading, validating, and maintaining
-OKF knowledge bundles. Subcommands map to the functions described in
-the OKF reference_agent and web_ingestion instruction prompts.
+Implements the functions referenced by OKF reference_agent and web_ingestion_agent
+prompts: list_concepts, read_existing_doc, write_concept_doc, plus utilities for
+validation, index generation, and link extraction.
+
+Document I/O only — fetching URLs, searching the web, and converting PDF/Office
+files to markdown are handled by other skills (webfetch, websearch, markdown).
 
 Usage:
-    okf.sh create <concept_id> [--type TYPE] [--title TITLE] [--description DESC] [--resource URI] [--tags TAG1,TAG2]
-    okf.sh read <concept_id> [--bundle BUNDLE_DIR]
-    okf.sh write <concept_id> --frontmatter <yaml> --body <markdown> [--bundle BUNDLE_DIR]
-    okf.sh list [--bundle BUNDLE_DIR] [--json]
-    okf.sh fetch <url> [--output FILE] [--format md|html|links|json]
-    okf.sh crawl <seed_url...> [--max-pages N] [--allowed-hosts HOST1,HOST2] [--output DIR] [--bundle BUNDLE_DIR]
-    okf.sh validate [--bundle BUNDLE_DIR] [--strict] [--json]
-    okf.sh index [--bundle BUNDLE_DIR] [--dir DIR] [--force]
-    okf.sh info <concept_id> [--bundle BUNDLE_DIR] [--json]
-    okf.sh log [--bundle BUNDLE_DIR] [--add "action: message"]
+    okf.sh <command> [options]
+
+Commands:
+    list        List all concepts in a bundle
+    read        Read an existing concept document
+    write       Write or update a concept document
+    extract-links  Extract cross-links from a markdown document
+    validate    Validate a bundle or single concept for OKF conformance
+    index       Generate or update an index.md file
+    tokens      Estimate token count of a document or bundle
 """
 
 import argparse
-import csv
-import io
+import datetime
 import json
 import os
 import re
-import ssl
+import signal
 import sys
-import urllib.error
-import urllib.parse
-import urllib.request
-import html as html_mod
-import datetime
-import mimetypes
+import textwrap
+from pathlib import Path
 
-# ── User agents (Safari — rarely blocked) ───────────────────────────
+# Ignore SIGPIPE — handles `cmd | head -N` gracefully
+signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
-UA_IPHONE = (
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7_8 like Mac OS X) "
-    "AppleWebKit/605.1.15 (KHTML, like Gecko) "
-    "Version/26.0 Mobile/15E148 Safari/604.1"
-)
-UA_MAC = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_7) "
-    "AppleWebKit/605.1.15 (KHTML, like Gecko) "
-    "Version/26.0 Safari/605.1.15"
-)
-UA_DESKTOP = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/131.0.0.0 Safari/537.36"
-)
-USER_AGENTS = [UA_IPHONE, UA_MAC, UA_DESKTOP]
-
-# ── Reserved filenames ──────────────────────────────────────────────
-
-RESERVED_FILES = {"index.md", "log.md"}
-
-# ── YAML helpers (no external deps) ─────────────────────────────────
-
-YAML_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)^---\s*$", re.DOTALL | re.MULTILINE)
+try:
+    _UTC = datetime.UTC
+except AttributeError:
+    _UTC = datetime.timezone.utc
 
 
-def parse_yaml_simple(text):
-    """Minimal YAML parser for OKF frontmatter. Handles scalars, lists, and one-level mappings."""
-    result = {}
-    current_key = None
-    current_list = None
-    current_mapping = None
-    lines = text.split("\n")
+# ---------------------------------------------------------------------------
+# YAML subset parser / serializer (stdlib only)
+# ---------------------------------------------------------------------------
 
-    for line in lines:
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-
-        # Check indentation level
-        indent = len(line) - len(line.lstrip())
-
-        if indent == 0:
-            # Top-level key
-            if ":" in stripped:
-                key, _, value = stripped.partition(":")
-                key = key.strip()
-                value = value.strip()
-                if value:
-                    result[key] = parse_yaml_value(value)
-                    current_key = None
-                    current_list = None
-                    current_mapping = None
-                elif stripped.endswith(":"):
-                    # Could be list or mapping
-                    current_key = key
-                    current_list = None
-                    current_mapping = None
-                    result[key] = None
-                else:
-                    current_key = key
-                    current_list = None
-                    current_mapping = None
-                    result[key] = None
-        elif indent > 0 and current_key:
-            if stripped.startswith("- "):
-                # List item
-                if current_list is None:
-                    current_list = []
-                    result[current_key] = current_list
-                item_value = stripped[2:].strip()
-                if item_value.startswith("{") and item_value.endswith("}"):
-                    # Inline mapping in list
-                    current_list.append(parse_inline_mapping(item_value))
-                else:
-                    current_list.append(parse_yaml_value(item_value))
-            elif ":" in stripped and current_mapping is not None:
-                # Nested mapping
-                if result.get(current_key) is None:
-                    result[current_key] = {}
-                k, _, v = stripped.partition(":")
-                result[current_key][k.strip()] = parse_yaml_value(v.strip())
-            elif ":" in stripped:
-                # Could be start of nested mapping
-                if result.get(current_key) is None or isinstance(result.get(current_key), dict):
-                    if result.get(current_key) is None:
-                        result[current_key] = {}
-                    k, _, v = stripped.partition(":")
-                    result[current_key][k.strip()] = parse_yaml_value(v.strip())
-
-    return result
-
-
-def parse_yaml_value(value):
-    """Parse a single YAML scalar value."""
-    if not value:
-        return None
-    # Remove quotes
-    if (value.startswith('"') and value.endswith('"')) or \
-       (value.startswith("'") and value.endswith("'")):
-        return value[1:-1]
-    # Boolean
-    if value.lower() in ("true", "yes"):
-        return True
-    if value.lower() in ("false", "no"):
-        return False
-    # None
-    if value.lower() in ("null", "~"):
-        return None
-    # Integer
-    try:
-        return int(value)
-    except ValueError:
-        pass
-    # Float
-    try:
-        return float(value)
-    except ValueError:
-        pass
-    # Inline list [a, b, c]
-    if value.startswith("[") and value.endswith("]"):
-        inner = value[1:-1].strip()
-        if not inner:
-            return []
-        return [parse_yaml_value(v.strip()) for v in inner.split(",")]
-    # Inline mapping {a: b, c: d}
-    if value.startswith("{") and value.endswith("}"):
-        return parse_inline_mapping(value)
-    return value
-
-
-def parse_inline_mapping(text):
-    """Parse {key: value, key: value} inline YAML mapping."""
-    text = text.strip()
-    if text.startswith("{"):
-        text = text[1:]
-    if text.endswith("}"):
-        text = text[:-1]
-    result = {}
-    # Split by comma, but respect nested braces
-    parts = split_inline_parts(text)
-    for part in parts:
-        part = part.strip()
-        if ":" in part:
-            k, _, v = part.partition(":")
-            result[k.strip()] = parse_yaml_value(v.strip())
-    return result
-
-
-def split_inline_parts(text):
-    """Split by comma, respecting nested braces and brackets."""
+def _split_top_level_commas(s):
+    """Split string on commas at nesting depth 0 (outside {}, [], quotes)."""
     parts = []
-    depth = 0
     current = []
-    for ch in text:
-        if ch in ("{", "["):
+    depth = 0
+    in_quote = None
+    i = 0
+    while i < len(s):
+        ch = s[i]
+        if in_quote:
+            current.append(ch)
+            if ch == '\\' and i + 1 < len(s):
+                i += 1
+                current.append(s[i])
+            elif ch == in_quote:
+                in_quote = None
+        elif ch in ('"', "'"):
+            in_quote = ch
+            current.append(ch)
+        elif ch in ('{', '['):
             depth += 1
             current.append(ch)
-        elif ch in ("}", "]"):
-            depth -= 1
+        elif ch in ('}', ']'):
+            depth = max(0, depth - 1)
             current.append(ch)
-        elif ch == "," and depth == 0:
-            parts.append("".join(current))
+        elif ch == ',' and depth == 0:
+            parts.append(''.join(current).strip())
             current = []
         else:
             current.append(ch)
-    if current:
-        parts.append("".join(current))
+        i += 1
+    remainder = ''.join(current).strip()
+    if remainder:
+        parts.append(remainder)
     return parts
 
 
-def serialize_yaml(data, indent=0):
-    """Serialize a dict to YAML string (simple subset)."""
-    lines = []
-    prefix = " " * indent
-    for key, value in data.items():
-        if value is None:
-            lines.append(f"{prefix}{key}:")
-        elif isinstance(value, dict):
-            # Check if simple enough for inline
-            if all(not isinstance(v, (dict, list)) for v in value.values()):
-                inline = ", ".join(f"{k}: {format_yaml_scalar(v)}" for k, v in value.items())
-                lines.append(f"{prefix}{key}: {{{inline}}}")
+def _strip_yaml_tag(s):
+    """Remove YAML type tags like !!str, !!float, !!int, !!bool."""
+    return re.sub(r'^!!(str|float|int|bool|binary|yaml):', '', s.strip())
+
+
+def yaml_parse_value(raw):
+    """Parse a YAML scalar, inline mapping, or inline list value."""
+    if not raw or not raw.strip():
+        return ''
+    s = raw.strip()
+    # Quoted strings
+    if (s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'")):
+        inner = s[1:-1]
+        if s.startswith('"'):
+            inner = inner.replace('\\n', '\n').replace('\\"', '"').replace('\\\\', '\\')
+        return inner
+    # Inline mapping
+    if s.startswith('{') and s.endswith('}'):
+        inner = s[1:-1].strip()
+        if not inner:
+            return {}
+        result = {}
+        for pair in _split_top_level_commas(inner):
+            if ':' not in pair:
+                continue
+            k, v = pair.split(':', 1)
+            result[yaml_parse_value(k.strip())] = yaml_parse_value(v.strip())
+        return result
+    # Inline list
+    if s.startswith('[') and s.endswith(']'):
+        inner = s[1:-1].strip()
+        if not inner:
+            return []
+        return [yaml_parse_value(item) for item in _split_top_level_commas(inner)]
+    # YAML type tag
+    s = _strip_yaml_tag(s)
+    # Booleans
+    if s.lower() in ('true', 'yes'):
+        return True
+    if s.lower() in ('false', 'no'):
+        return False
+    # Null
+    if s.lower() in ('null', '~', ''):
+        return None
+    # Integer
+    if re.match(r'^-?\d+$', s):
+        return int(s)
+    # Float
+    if re.match(r'^-?\d+\.\d+$', s):
+        return float(s)
+    return s
+
+
+def yaml_parse(text):
+    """Parse a YAML document string into a Python object.
+
+    Handles: mappings, lists, nested mappings, inline {maps} and [lists],
+    quoted strings, scalars. Does NOT handle multi-line strings, anchors,
+    or other advanced YAML features.
+    """
+    lines = text.split('\n')
+    filtered = []
+    for line in lines:
+        stripped = line.rstrip()
+        if stripped.lstrip().startswith('#'):
+            continue
+        if stripped.strip():
+            filtered.append(stripped)
+    if not filtered:
+        return {}
+    first = filtered[0].lstrip()
+    if first.startswith('- '):
+        return _parse_list(filtered, 0, 0)[0]
+    return _parse_mapping(filtered, 0, 0)[0]
+
+
+def _parse_list(lines, idx, base_indent):
+    result = []
+    while idx < len(lines):
+        line = lines[idx]
+        stripped = line.lstrip()
+        indent = len(line) - len(stripped)
+        if indent < base_indent:
+            break
+        if indent > base_indent:
+            break
+        if not stripped.startswith('- '):
+            break
+        item_text = stripped[2:]
+        if item_text.startswith('{') and item_text.endswith('}'):
+            result.append(yaml_parse_value(item_text))
+            idx += 1
+        elif ':' in item_text and not item_text.startswith('['):
+            key, val = item_text.split(':', 1)
+            key = key.strip()
+            val = val.strip()
+            entry = {}
+            if val:
+                entry[key] = yaml_parse_value(val)
             else:
-                lines.append(f"{prefix}{key}:")
-                lines.append(serialize_yaml(value, indent + 2))
-        elif isinstance(value, list):
-            if not value:
-                lines.append(f"{prefix}{key}: []")
-            elif all(isinstance(v, str) for v in value):
-                # Simple list of strings
-                items = ", ".join(f"'{v}'" if "," in v else str(v) for v in value)
-                lines.append(f"{prefix}{key}: [{items}]")
-            else:
-                lines.append(f"{prefix}{key}:")
-                for item in value:
-                    if isinstance(item, dict):
-                        inline = ", ".join(f"{k}: {format_yaml_scalar(v)}" for k, v in item.items())
-                        lines.append(f"{prefix}  - {{{inline}}}")
-                    else:
-                        lines.append(f"{prefix}  - {format_yaml_scalar(item)}")
+                entry[key] = None
+            child_indent = indent + 2
+            idx += 1
+            while idx < len(lines):
+                cline = lines[idx]
+                cstripped = cline.lstrip()
+                cindent = len(cline) - len(cstripped)
+                if cindent < child_indent:
+                    break
+                if cindent == child_indent and cstripped.startswith('- '):
+                    break
+                if cindent >= child_indent and ':' in cstripped:
+                    ck, cv = cstripped.split(':', 1)
+                    entry[ck.strip()] = yaml_parse_value(cv)
+                    idx += 1
+                else:
+                    idx += 1
+            result.append(entry)
         else:
-            lines.append(f"{prefix}{key}: {format_yaml_scalar(value)}")
-    return "\n".join(lines)
+            result.append(yaml_parse_value(item_text))
+            idx += 1
+    return result, idx
 
 
-def format_yaml_scalar(value):
-    """Format a scalar value for YAML output."""
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, (int, float)):
-        return str(value)
-    if isinstance(value, str):
-        # Quote if contains special chars
-        if any(ch in value for ch in (":", "#", "{", "}", "[", "]", ",", "&", "*", "?", "|", "-", "<", ">", "=", "!", "%", "@", "`")):
-            if "\n" in value:
-                return "|\n" + "\n".join(f"  {line}" for line in value.split("\n"))
-            return f'"{value}"'
-        return value
-    return str(value)
+def _parse_mapping(lines, idx, base_indent):
+    result = {}
+    while idx < len(lines):
+        line = lines[idx]
+        stripped = line.lstrip()
+        indent = len(line) - len(stripped)
+        if indent < base_indent:
+            break
+        if indent > base_indent:
+            idx += 1
+            continue
+        if stripped.startswith('- '):
+            break
+        if ':' not in stripped:
+            idx += 1
+            continue
+        key, val = stripped.split(':', 1)
+        key = key.strip()
+        val = val.strip()
+        if val.startswith('{') and val.endswith('}'):
+            result[key] = yaml_parse_value(val)
+            idx += 1
+        elif val.startswith('[') and val.endswith(']'):
+            result[key] = yaml_parse_value(val)
+            idx += 1
+        elif val:
+            result[key] = yaml_parse_value(val)
+            idx += 1
+        else:
+            if idx + 1 < len(lines):
+                next_line = lines[idx + 1]
+                next_stripped = next_line.lstrip()
+                next_indent = len(next_line) - len(next_stripped)
+                if next_indent > indent and next_stripped.startswith('- '):
+                    lst, new_idx = _parse_list(lines, idx + 1, next_indent)
+                    result[key] = lst
+                    idx = new_idx
+                elif next_indent > indent and ':' in next_stripped:
+                    sub, new_idx = _parse_mapping(lines, idx + 1, next_indent)
+                    result[key] = sub
+                    idx = new_idx
+                else:
+                    result[key] = ''
+                    idx += 1
+            else:
+                result[key] = ''
+                idx += 1
+    return result, idx
 
 
-# ── Frontmatter extraction ──────────────────────────────────────────
+def yaml_serialize(obj, indent=0):
+    """Serialize a Python object to a YAML string (subset)."""
+    prefix = '  ' * indent
+    if obj is None:
+        return 'null'
+    if isinstance(obj, bool):
+        return 'true' if obj else 'false'
+    if isinstance(obj, int):
+        return str(obj)
+    if isinstance(obj, float):
+        return str(obj)
+    if isinstance(obj, str):
+        if any(ch in obj for ch in ':{}[]#&*!|>\"\'%@`') or obj.startswith('- ') or obj in ('null', 'true', 'false', 'yes', 'no'):
+            escaped = obj.replace('\\', '\\\\').replace('"', '\\"')
+            return f'"{escaped}"'
+        return obj
+    if isinstance(obj, list):
+        if not obj:
+            return '[]'
+        if all(isinstance(item, str) for item in obj):
+            return '[' + ', '.join(yaml_serialize(item, indent) for item in obj) + ']'
+        lines = []
+        for item in obj:
+            if isinstance(item, dict):
+                # Use multi-line format for list-of-mappings (matches OKF style)
+                first = True
+                for k, v in item.items():
+                    val_str = yaml_serialize(v, 0)
+                    if first:
+                        lines.append(f'{prefix}- {k}: {val_str}')
+                        first = False
+                    else:
+                        lines.append(f'{prefix}  {k}: {val_str}')
+            else:
+                lines.append(f'{prefix}- {yaml_serialize(item, indent)}')
+        return '\n'.join(lines)
+    if isinstance(obj, dict):
+        if not obj:
+            return '{}'
+        # Use inline { } format for small dicts with simple scalar values
+        if len(obj) <= 4 and all(isinstance(v, (str, int, float, bool, type(None))) for v in obj.values()):
+            inline = ', '.join(f'{k}: {yaml_serialize(v, 0)}' for k, v in obj.items())
+            return '{' + inline + '}'
+        lines = []
+        for k, v in obj.items():
+            val_str = yaml_serialize(v, indent + 1)
+            # If value spans multiple lines, put it on the next line
+            if '\n' in val_str:
+                lines.append(f'{prefix}{k}:')
+                lines.append(val_str)
+            else:
+                lines.append(f'{prefix}{k}: {val_str}')
+        return '\n'.join(lines)
+    return str(obj)
 
-def extract_frontmatter(text):
-    """Extract YAML frontmatter and body from a markdown file."""
-    m = YAML_FRONTMATTER_RE.match(text)
-    if m:
-        raw = m.group(1)
-        body = text[m.end():].lstrip("\n")
+
+# ---------------------------------------------------------------------------
+# Frontmatter I/O
+# ---------------------------------------------------------------------------
+
+def parse_frontmatter(text):
+    """Extract and parse YAML frontmatter from a markdown document.
+
+    Returns (frontmatter_dict, body_string) or ({}, full_text) if no frontmatter.
+    """
+    text = text.lstrip('\n')
+    if not text.startswith('---'):
+        return {}, text
+    end = text.find('---', 3)
+    if end == -1:
+        return {}, text
+    yaml_text = text[3:end].strip()
+    body = text[end + 3:].strip()
+    try:
+        fm = yaml_parse(yaml_text)
+        if not isinstance(fm, dict):
+            fm = {'_raw': fm}
+    except Exception:
+        fm = {'_parse_error': yaml_text}
+    return fm, body
+
+
+def serialize_frontmatter(fm):
+    """Serialize a frontmatter dict to a YAML string."""
+    return yaml_serialize(fm)
+
+
+def build_document(fm, body):
+    """Build a complete OKF concept document from frontmatter dict and body string."""
+    parts = ['---']
+    if fm:
+        parts.append(serialize_frontmatter(fm))
+    parts.append('---')
+    if body:
+        parts.append(body)
+    return '\n'.join(parts) + '\n'
+
+
+# ---------------------------------------------------------------------------
+# Bundle operations
+# ---------------------------------------------------------------------------
+
+RESERVED_FILES = {'index.md', 'log.md'}
+
+
+def list_concepts(bundle_path):
+    """List all concept documents in a bundle directory.
+
+    Returns a list of dicts with keys: id, path, type, title, description.
+    Concept ID is the relative path with .md suffix removed.
+    """
+    bundle = Path(bundle_path).resolve()
+    if not bundle.is_dir():
+        print(f"Error: '{bundle_path}' is not a directory", file=sys.stderr)
+        sys.exit(1)
+    concepts = []
+    for md_file in sorted(bundle.rglob('*.md')):
+        name = md_file.name
+        rel = md_file.relative_to(bundle)
+        if name in RESERVED_FILES:
+            continue
+        concept_id = str(rel)[: -3]  # strip .md
         try:
-            fm = parse_yaml_simple(raw)
+            text = md_file.read_text(encoding='utf-8')
+            fm, _ = parse_frontmatter(text)
         except Exception:
             fm = {}
-        return fm, body, raw
-    return {}, text.strip(), ""
-
-
-def build_document(frontmatter, body):
-    """Build a complete OKF concept document from frontmatter dict and body string."""
-    yaml_str = serialize_yaml(frontmatter)
-    return f"---\n{yaml_str}\n---\n\n{body.lstrip()}\n"
-
-
-# ── URL fetching (stdlib only, Safari user agents) ──────────────────
-
-def fetch_url_content(url, timeout=30):
-    """Fetch a URL and return (html_text, final_url, status).
-
-    Uses Safari user agents and follows redirects.
-    """
-    import random
-    ua = random.choice(USER_AGENTS)
-
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": ua,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept-Encoding": "identity",
-            "Connection": "keep-alive",
-        },
-    )
-
-    ctx = ssl.create_default_context()
-    try:
-        with urllib.request.urlopen(req, context=ctx, timeout=timeout) as resp:
-            data = resp.read().decode("utf-8", errors="replace")
-            final_url = resp.url
-            return data, final_url, 200
-    except urllib.error.HTTPError as e:
-        return "", url, e.code
-    except urllib.error.URLError as e:
-        return "", url, 0
-    except TimeoutError:
-        return "", url, 0
-
-
-def html_to_markdown(html_text):
-    """Convert HTML to markdown-like text using stdlib only."""
-    content = html_mod.unescape(html_text)
-
-    replacements = [
-        (r"<h1[^>]*>(.*?)</h1>", r"\n\n# \1\n\n"),
-        (r"<h2[^>]*>(.*?)</h2>", r"\n\n## \1\n\n"),
-        (r"<h3[^>]*>(.*?)</h3>", r"\n\n### \1\n\n"),
-        (r"<h4[^>]*>(.*?)</h4>", r"\n\n#### \1\n\n"),
-        (r"<h5[^>]*>(.*?)</h5>", r"\n\n##### \1\n\n"),
-        (r"<h6[^>]*>(.*?)</h6>", r"\n\n###### \1\n\n"),
-        (r"<p[^>]*>(.*?)</p>", r"\n\n\1\n\n"),
-        (r"<br\s*/?>", r"\n"),
-        (r"<li[^>]*>(.*?)</li>", r"  - \1\n"),
-        (r"<a[^>]*href=\"([^\"]*?)\"[^>]*>(.*?)</a>", r"\2 (\1)"),
-        (r"<strong[^>]*>(.*?)</strong>", r"**\1**"),
-        (r"<b[^>]*>(.*?)</b>", r"**\1**"),
-        (r"<em[^>]*>(.*?)</em>", r"*\1*"),
-        (r"<i[^>]*>(.*?)</i>", r"*\1*"),
-        (r"<code[^>]*>(.*?)</code>", r"`\1`"),
-        (r"<pre[^>]*>(.*?)</pre>", r"\n\n```\n\1\n```\n\n"),
-        (r"<table[^>]*>(.*?)</table>", r"\n\n\1\n\n"),
-        (r"<th[^>]*>(.*?)</th>", r"| **\1** |"),
-        (r"<td[^>]*>(.*?)</td>", r"| \1 |"),
-        (r"<tr[^>]*>", r"\n"),
-    ]
-
-    for pat, repl in replacements:
-        content = re.sub(pat, repl, content, flags=re.DOTALL | re.IGNORECASE)
-
-    # Strip HTML comments
-    content = re.sub(r"<!--.*?-->", "", content, flags=re.DOTALL)
-    # Strip remaining tags
-    content = re.sub(r"<[^>]+>", "", content)
-    # Collapse whitespace
-    content = re.sub(r"[ \t]+", " ", content)
-    content = re.sub(r"\n{3,}", "\n\n", content)
-    return content.strip()
-
-
-def extract_links(html_text, base_url=""):
-    """Extract all href links from HTML, returning absolute URLs."""
-    links = set()
-    link_re = re.compile(r'<a[^>]*href=["\']([^"\']*)["\'][^>]*>', re.IGNORECASE)
-    parsed_base = urllib.parse.urlparse(base_url)
-
-    for m in link_re.finditer(html_text):
-        href = m.group(1).strip()
-        if not href or href.startswith(("#", "javascript:", "mailto:", "tel:", "data:")):
-            continue
-        # Resolve relative URLs
-        if not href.startswith(("http://", "https://", "//")):
-            href = urllib.parse.urljoin(base_url, href)
-        # Remove fragment
-        href = href.split("#")[0]
-        links.add(href)
-
-    return sorted(links)
-
-
-# ── Bundle operations ───────────────────────────────────────────────
-
-def resolve_bundle_dir(bundle_arg=None):
-    """Resolve bundle directory path."""
-    if bundle_arg:
-        return os.path.abspath(bundle_arg)
-    # Default: find .agents/skills or current dir
-    return os.getcwd()
-
-
-def find_concepts(bundle_dir, recursive=True):
-    """Find all concept .md files in a bundle directory.
-
-    Returns list of (relative_path, concept_id) tuples.
-    Skips reserved files (index.md, log.md).
-    """
-    concepts = []
-    for root, dirs, files in os.walk(bundle_dir):
-        # Skip hidden directories
-        dirs[:] = [d for d in dirs if not d.startswith(".")]
-        for fname in sorted(files):
-            if not fname.endswith(".md"):
-                continue
-            if fname in RESERVED_FILES:
-                continue
-            full_path = os.path.join(root, fname)
-            rel_path = os.path.relpath(full_path, bundle_dir)
-            concept_id = rel_path[:-3]  # Remove .md
-            concepts.append((rel_path, concept_id))
-        if not recursive:
-            break
+        concepts.append({
+            'id': concept_id,
+            'path': str(rel),
+            'type': fm.get('type', ''),
+            'title': fm.get('title', ''),
+            'description': fm.get('description', ''),
+        })
     return concepts
 
 
-def read_existing_doc(concept_id, bundle_dir):
-    """read_existing_doc(concept_id) — Read an existing concept document.
+def read_existing_doc(concept_id, bundle_path):
+    """Read an existing concept document by its concept ID.
 
-    Returns (frontmatter_dict, body_text, raw_frontmatter_yaml) or (None, None, None).
+    Returns dict with keys: id, frontmatter, body, raw.
+    Returns None if the document does not exist.
     """
-    path = os.path.join(bundle_dir, concept_id + ".md")
-    if not os.path.isfile(path):
-        return None, None, None
-    with open(path, "r", encoding="utf-8") as f:
-        text = f.read()
-    fm, body, raw = extract_frontmatter(text)
-    return fm, body, raw
-
-
-def write_concept_doc(concept_id, frontmatter, body, bundle_dir, validate_doc=True):
-    """write_concept_doc(concept_id, frontmatter, body) — Write or update a concept document.
-
-    Validates required fields and preserves existing content on update.
-    Returns dict with status and any warnings.
-    """
-    result = {"status": "ok", "concept_id": concept_id, "warnings": []}
-
-    # Validate required fields
-    if not frontmatter.get("type"):
-        result["status"] = "error"
-        result["error"] = "Missing required frontmatter field: type"
-        return result
-
-    # Check for existing doc (augmentation mode)
-    existing_fm, existing_body, _ = read_existing_doc(concept_id, bundle_dir)
-    if existing_fm is not None:
-        # Augmentation: preserve existing keys
-        if "type" not in frontmatter:
-            frontmatter["type"] = existing_fm.get("type")
-        if "title" not in frontmatter:
-            frontmatter["title"] = existing_fm.get("title")
-        if "resource" not in frontmatter:
-            frontmatter["resource"] = existing_fm.get("resource")
-        # Merge tags
-        if "tags" in frontmatter and "tags" in existing_fm:
-            existing_tags = existing_fm.get("tags") or []
-            new_tags = frontmatter.get("tags") or []
-            if isinstance(existing_tags, list) and isinstance(new_tags, list):
-                merged = list(dict.fromkeys(existing_tags + new_tags))
-                frontmatter["tags"] = merged
-        # Merge sources
-        if "sources" in frontmatter and "sources" in existing_fm:
-            existing_sources = existing_fm.get("sources") or []
-            new_sources = frontmatter.get("sources") or []
-            if isinstance(existing_sources, list) and isinstance(new_sources, list):
-                existing_ids = {s.get("id") for s in existing_sources if isinstance(s, dict)}
-                merged = list(existing_sources)
-                for src in new_sources:
-                    if isinstance(src, dict) and src.get("id") not in existing_ids:
-                        merged.append(src)
-                frontmatter["sources"] = merged
-        # Preserve body headings
-        if existing_body:
-            existing_headings = re.findall(r"^#{1,6}\s+.+$", existing_body, re.MULTILINE)
-            new_headings = re.findall(r"^#{1,6}\s+.+$", body, re.MULTILINE)
-            for eh in existing_headings:
-                if eh not in new_headings:
-                    result["warnings"].append(f"Existing heading '{eh}' not preserved in new body")
-
-    # Set generated timestamp if not present
-    if "generated" not in frontmatter:
-        now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        frontmatter["generated"] = {"by": "okf_tool/1.0", "at": now}
-
-    # Build and write
-    doc = build_document(frontmatter, body)
-    out_path = os.path.join(bundle_dir, concept_id + ".md")
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write(doc)
-
-    result["path"] = out_path
-    return result
-
-
-def list_concepts(bundle_dir):
-    """list_concepts() — List all concepts in a bundle.
-
-    Returns list of dicts with id, path, type, title, description.
-    """
-    concepts = find_concepts(bundle_dir)
-    result = []
-    for rel_path, concept_id in concepts:
-        fm, _, _ = read_existing_doc(concept_id, bundle_dir)
-        result.append({
-            "id": concept_id,
-            "path": rel_path,
-            "type": fm.get("type", ""),
-            "title": fm.get("title", ""),
-            "description": fm.get("description", ""),
-            "tags": fm.get("tags", []),
-            "status": fm.get("status", "stable"),
-        })
-    return result
-
-
-def get_concept_info(concept_id, bundle_dir):
-    """info(concept_id) — Get detailed info about a concept."""
-    fm, body, raw = read_existing_doc(concept_id, bundle_dir)
-    if fm is None:
+    bundle = Path(bundle_path).resolve()
+    doc_path = bundle / (concept_id + '.md')
+    if not doc_path.is_file():
         return None
-
-    info = {
-        "id": concept_id,
-        "path": concept_id + ".md",
-        "frontmatter": fm,
-        "body_lines": len(body.split("\n")) if body else 0,
-        "body_words": len(body.split()) if body else 0,
-        "headings": re.findall(r"^#{1,6}\s+.+$", body or "", re.MULTILINE),
+    raw = doc_path.read_text(encoding='utf-8')
+    fm, body = parse_frontmatter(raw)
+    return {
+        'id': concept_id,
+        'frontmatter': fm,
+        'body': body,
+        'raw': raw,
     }
-    return info
 
 
-# ── Validation ──────────────────────────────────────────────────────
+def write_concept_doc(concept_id, frontmatter, body, bundle_path, dry_run=False):
+    """Write or update a concept document.
 
-def validate_bundle(bundle_dir, strict=False):
-    """validate() — Validate an OKF bundle for conformance.
+    Creates parent directories as needed. Validates that type is present.
+    Auto-fills generated field if missing.
 
-    Returns (errors, warnings) lists.
+    Returns the document path written (or None if dry_run).
     """
-    errors = []
-    warnings = []
+    if not isinstance(frontmatter, dict):
+        print(f"Error: frontmatter must be a dict, got {type(frontmatter).__name__}", file=sys.stderr)
+        sys.exit(1)
+    if not frontmatter.get('type'):
+        print("Error: frontmatter must include a 'type' field", file=sys.stderr)
+        sys.exit(1)
+    if 'generated' not in frontmatter:
+        frontmatter['generated'] = {
+            'by': 'okf_tool/okf',
+            'at': datetime.datetime.now(_UTC).strftime('%Y-%m-%dT%H:%M:%SZ'),
+        }
+    bundle = Path(bundle_path).resolve()
+    doc_path = bundle / (concept_id + '.md')
+    doc_path.parent.mkdir(parents=True, exist_ok=True)
+    doc_text = build_document(frontmatter, body)
+    if dry_run:
+        print(doc_text, end='')
+        return None
+    doc_path.write_text(doc_text, encoding='utf-8')
+    return str(doc_path.relative_to(bundle))
 
-    concepts = find_concepts(bundle_dir)
 
-    if not concepts:
-        warnings.append("No concept documents found in bundle")
+# ---------------------------------------------------------------------------
+# Link extraction
+# ---------------------------------------------------------------------------
 
-    for rel_path, concept_id in concepts:
-        path = os.path.join(bundle_dir, rel_path)
+def extract_links(text):
+    """Extract markdown links from text.
+
+    Returns list of dicts: {text, target, line}.
+    Skips links inside fenced code blocks.
+    """
+    links = []
+    in_fence = False
+    for i, line in enumerate(text.split('\n'), 1):
+        stripped = line.strip()
+        if stripped.startswith('```'):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        for m in re.finditer(r'\[([^\]]+)\]\(([^)]+)\)', line):
+            links.append({'text': m.group(1), 'target': m.group(2), 'line': i})
+    return links
+
+
+def extract_external_urls(text):
+    """Extract external URLs from markdown text (http/https links only)."""
+    urls = []
+    in_fence = False
+    for line in text.split('\n'):
+        stripped = line.strip()
+        if stripped.startswith('```'):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        for m in re.finditer(r'\[([^\]]*)\]\((https?://[^)]+)\)', line):
+            urls.append({'text': m.group(1) or m.group(2), 'url': m.group(2)})
+        for m in re.finditer(r'(https?://\S+)', line):
+            url = m.group(1).rstrip(')')
+            urls.append({'text': url, 'url': url})
+    return urls
+
+
+# ---------------------------------------------------------------------------
+# Validation
+# ---------------------------------------------------------------------------
+
+def validate_concept(fm, body, concept_id=None, doc_path=None):
+    """Validate a single concept's frontmatter and body.
+
+    Returns list of (severity, message) tuples. severity: 'error' or 'warn'.
+    """
+    issues = []
+    if not isinstance(fm, dict):
+        issues.append(('error', 'Frontmatter is not a YAML mapping'))
+        return issues
+    if not fm.get('type'):
+        issues.append(('error', "Missing required 'type' field"))
+    elif not isinstance(fm['type'], str):
+        issues.append(('error', "'type' must be a string"))
+    if fm.get('title') and not isinstance(fm['title'], str):
+        issues.append(('error', "'title' must be a string"))
+    if fm.get('description') and not isinstance(fm['description'], str):
+        issues.append(('error', "'description' must be a string"))
+    if fm.get('resource') and not isinstance(fm['resource'], str):
+        issues.append(('error', "'resource' must be a string"))
+    if fm.get('tags'):
+        if isinstance(fm['tags'], list):
+            for t in fm['tags']:
+                if not isinstance(t, str):
+                    issues.append(('warn', f"Tag {t!r} is not a string"))
+        elif not isinstance(fm['tags'], str):
+            issues.append(('warn', "'tags' should be a list or comma-separated string"))
+    if fm.get('status') and fm['status'] not in ('draft', 'stable', 'deprecated'):
+        issues.append(('warn', f"'status' value '{fm['status']}' is not one of: draft, stable, deprecated"))
+    if fm.get('stale_after'):
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                text = f.read()
-        except Exception as e:
-            errors.append(f"{rel_path}: cannot read file: {e}")
-            continue
-
-        fm, body, raw = extract_frontmatter(text)
-
-        # Check frontmatter present
-        if not fm:
-            errors.append(f"{rel_path}: no valid YAML frontmatter found")
-            continue
-
-        # Check required type field
-        if not fm.get("type"):
-            errors.append(f"{rel_path}: missing required field 'type'")
-
-        # Type validation
-        type_val = fm.get("type", "")
-        if type_val and not isinstance(type_val, str):
-            errors.append(f"{rel_path}: 'type' must be a string")
-
-        # Description validation
-        desc = fm.get("description", "")
-        if desc:
-            if isinstance(desc, str) and len(desc) > 1024:
-                warnings.append(f"{rel_path}: description exceeds 1024 chars")
-            if isinstance(desc, str) and re.search(r"<[^>]+>", desc):
-                warnings.append(f"{rel_path}: description contains HTML/XML tags")
-
-        # Status validation
-        status = fm.get("status")
-        if status and status not in ("draft", "stable", "deprecated"):
-            warnings.append(f"{rel_path}: invalid status '{status}' (expected draft|stable|deprecated)")
-
-        # stale_after validation
-        stale = fm.get("stale_after")
-        if stale:
-            try:
-                datetime.datetime.strptime(str(stale), "%Y-%m-%d")
-            except ValueError:
-                warnings.append(f"{rel_path}: stale_after is not YYYY-MM-DD format")
-
-        # sources validation
-        sources = fm.get("sources")
-        if sources:
-            if not isinstance(sources, list):
-                warnings.append(f"{rel_path}: sources should be a list")
-            else:
-                for i, src in enumerate(sources):
-                    if isinstance(src, dict) and not src.get("resource"):
-                        warnings.append(f"{rel_path}: sources[{i}] missing required 'resource'")
-
-        # Body check
-        if not body or not body.strip():
-            warnings.append(f"{rel_path}: empty body")
-
-    # Check for index.md at root (informational)
-    index_path = os.path.join(bundle_dir, "index.md")
-    if not os.path.isfile(index_path):
-        warnings.append("No index.md at bundle root (optional but recommended)")
-
-    return errors, warnings
-
-
-# ── Index generation ────────────────────────────────────────────────
-
-def generate_index(bundle_dir, target_dir=None, force=False):
-    """index() — Generate index.md for a directory.
-
-    Returns the generated content.
-    """
-    if target_dir is None:
-        target_dir = bundle_dir
-
-    concepts = find_concepts(target_dir, recursive=False)
-    subdirs = []
-    for entry in sorted(os.listdir(target_dir)):
-        full = os.path.join(target_dir, entry)
-        if os.path.isdir(full) and not entry.startswith("."):
-            subdirs.append(entry)
-
-    lines = []
-    current_type = None
-
-    # Group by type
-    for rel_path, concept_id in concepts:
-        fm, _, _ = read_existing_doc(concept_id, bundle_dir)
-        ctype = fm.get("type", "Unknown")
-        if ctype != current_type:
-            current_type = ctype
-            lines.append(f"## {current_type}")
-            lines.append("")
-        title = fm.get("title", concept_id.split("/")[-1])
-        desc = fm.get("description", "")
-        fname = rel_path.split("/")[-1]
-        if desc:
-            lines.append(f"* [{title}]({fname}) - {desc}")
+            datetime.date.fromisoformat(str(fm['stale_after']))
+        except (ValueError, TypeError):
+            issues.append(('warn', "'stale_after' should be a YYYY-MM-DD date"))
+    if fm.get('sources'):
+        if not isinstance(fm['sources'], list):
+            issues.append(('error', "'sources' must be a list"))
         else:
-            lines.append(f"* [{title}]({fname})")
-    lines.append("")
+            for i, src in enumerate(fm['sources']):
+                if not isinstance(src, dict):
+                    issues.append(('error', f"sources[{i}] must be a mapping"))
+                    continue
+                if not src.get('resource'):
+                    issues.append(('error', f"sources[{i}] missing required 'resource'"))
+    if fm.get('generated'):
+        gen = fm['generated']
+        if isinstance(gen, dict) and not gen.get('by'):
+            issues.append(('warn', "'generated' should include 'by' (actor) field"))
+    if fm.get('verified'):
+        verified = fm['verified'] if isinstance(fm['verified'], list) else [fm['verified']]
+        for i, v in enumerate(verified):
+            if isinstance(v, dict) and not v.get('by'):
+                issues.append(('warn', f"verified[{i}] should include 'by' (actor) field"))
+    if body and not re.search(r'^#\s+', body, re.MULTILINE):
+        issues.append(('warn', 'Body has no level-1 heading'))
+    label = concept_id or (str(doc_path) if doc_path else 'unknown')
+    if issues:
+        return issues
+    return [('info', 'OK')]
 
-    # Subdirectories
-    if subdirs:
-        lines.append("## Subdirectories")
-        lines.append("")
-        for sd in subdirs:
-            lines.append(f"* [{sd}]({sd}/) - {sd} concepts")
-        lines.append("")
 
-    return "\n".join(lines)
+def validate_bundle(bundle_path):
+    """Validate all concepts in a bundle.
 
-
-# ── Crawl ───────────────────────────────────────────────────────────
-
-def crawl_urls(seed_urls, max_pages=10, allowed_hosts=None, bundle_dir=None):
-    """crawl() — Fetch seed URLs, follow relevant links, return fetched pages.
-
-    Returns list of {url, markdown, links, title, status} dicts.
+    Returns list of (concept_id, [(severity, message), ...]).
     """
-    fetched = []
-    to_fetch = list(seed_urls)
-    seen = set()
-
-    # Resolve allowed hosts
-    if allowed_hosts is None:
-        allowed_hosts = set()
-        for url in seed_urls:
-            parsed = urllib.parse.urlparse(url)
-            allowed_hosts.add(parsed.hostname or "")
-
-    def is_allowed(url):
-        parsed = urllib.parse.urlparse(url)
-        host = parsed.hostname or ""
-        return host in allowed_hosts
-
-    def is_worth_following(url, title=""):
-        """Heuristic: skip nav, footer, marketing, login pages."""
-        skip_patterns = [
-            r"/login", r"/signin", r"/signup", r"/register",
-            r"/about", r"/contact", r"/privacy", r"/terms",
-            r"/cookie", r"/faq", r"/changelog", r"/roadmap",
-            r"getting-started", r"quickstart", r"tutorial",
-            r"/blog", r"/news", r"/press",
-        ]
-        lower_url = url.lower()
-        lower_title = title.lower()
-        for pat in skip_patterns:
-            if pat in lower_url or pat in lower_title:
-                return False
-        return True
-
-    while to_fetch and len(fetched) < max_pages:
-        url = to_fetch.pop(0)
-        if url in seen:
-            continue
-        seen.add(url)
-
-        html_text, final_url, status = fetch_url_content(url)
-        if not html_text or status != 200:
-            fetched.append({
-                "url": url,
-                "markdown": "",
-                "links": [],
-                "title": "",
-                "status": status,
-                "error": f"HTTP {status}" if status else "fetch failed",
-            })
-            continue
-
-        markdown = html_to_markdown(html_text)
-        links = extract_links(html_text, final_url)
-
-        # Extract title from HTML
-        title_match = re.search(r"<title[^>]*>(.*?)</title>", html_text, re.IGNORECASE | re.DOTALL)
-        title = html_mod.unescape(title_match.group(1).strip()) if title_match else ""
-
-        fetched.append({
-            "url": final_url,
-            "markdown": markdown,
-            "links": links,
-            "title": title,
-            "status": status,
-        })
-
-        # Queue relevant links for next round
-        for link in links:
-            if link not in seen and is_allowed(link) and is_worth_following(link):
-                to_fetch.append(link)
-
-    return fetched
+    results = []
+    for concept in list_concepts(bundle_path):
+        doc = read_existing_doc(concept['id'], bundle_path)
+        if doc:
+            issues = validate_concept(doc['frontmatter'], doc['body'], concept['id'])
+            results.append((concept['id'], issues))
+    return results
 
 
-# ── Scaffolding ─────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Index generation
+# ---------------------------------------------------------------------------
 
-def scaffold_concept(concept_id, bundle_dir, type_name="Reference", title="",
-                     description="", resource="", tags=None):
-    """create() — Scaffold a new concept document with minimal frontmatter."""
-    fm = {"type": type_name}
-    if title:
-        fm["title"] = title
-    if description:
-        fm["description"] = description
-    if resource:
-        fm["resource"] = resource
-    if tags:
-        fm["tags"] = tags if isinstance(tags, list) else [t.strip() for t in tags.split(",")]
+def generate_index(bundle_path, output=None):
+    """Generate an index.md file for a bundle directory.
 
-    body = f"# {title or type_name}\n\n"
-    if description:
-        body += f"{description}\n\n"
-
-    result = write_concept_doc(concept_id, fm, body, bundle_dir)
-    return result
-
-
-# ── Log ─────────────────────────────────────────────────────────────
-
-def append_log(bundle_dir, dir_path=None, entry=None):
-    """log() — Append an entry to log.md."""
-    if dir_path is None:
-        dir_path = bundle_dir
-    log_path = os.path.join(dir_path, "log.md")
-
-    existing = ""
-    if os.path.isfile(log_path):
-        with open(log_path, "r", encoding="utf-8") as f:
-            existing = f.read()
-
-    today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
-
-    lines = []
-    if not existing.strip():
-        lines.append("# Directory Update Log")
-        lines.append("")
-
-    if entry:
-        # Parse "action: message" format
-        if ": " in entry:
-            action, _, message = entry.partition(": ")
-            lines.append(f"## {today}")
-            lines.append(f"* **{action.strip()}**: {message.strip()}")
-            lines.append("")
+    Groups concepts by their immediate subdirectory (or 'root' for top-level).
+    Returns the generated markdown text.
+    """
+    bundle = Path(bundle_path).resolve()
+    concepts = list_concepts(str(bundle))
+    groups = {}
+    for c in concepts:
+        parts = c['id'].split('/')
+        if len(parts) > 1:
+            group = parts[0]
         else:
-            lines.append(f"## {today}")
-            lines.append(f"* {entry}")
-            lines.append("")
-
-    content = existing.rstrip() + "\n" + "\n".join(lines) + "\n"
-    with open(log_path, "w", encoding="utf-8") as f:
-        f.write(content)
-    return log_path
-
-
-# ── CLI ─────────────────────────────────────────────────────────────
-
-def cmd_create(args):
-    """Scaffold a new concept document."""
-    bundle_dir = resolve_bundle_dir(args.bundle)
-    tags = [t.strip() for t in args.tags.split(",")] if args.tags else None
-    result = scaffold_concept(
-        args.concept_id, bundle_dir,
-        type_name=args.type, title=args.title,
-        description=args.description, resource=args.resource, tags=tags,
-    )
-    if result["status"] == "ok":
-        print(f"Created: {result['path']}")
-        for w in result.get("warnings", []):
-            print(f"  warning: {w}", file=sys.stderr)
-    else:
-        print(f"Error: {result.get('error', 'unknown')}", file=sys.stderr)
-        sys.exit(1)
+            group = 'root'
+        groups.setdefault(group, []).append(c)
+    lines = []
+    for group in sorted(groups.keys()):
+        if group == 'root':
+            lines.append('# Concepts')
+        else:
+            lines.append(f'# {group}')
+        lines.append('')
+        for c in groups[group]:
+            title = c.get('title') or c['id'].split('/')[-1].replace('-', ' ').title()
+            desc = f' — {c["description"]}' if c.get('description') else ''
+            rel_path = c['path']
+            if group != 'root':
+                rel_path = c['id'].split('/', 1)[1] + '.md'
+            lines.append(f'* [{title}]({rel_path}){desc}')
+        lines.append('')
+    return '\n'.join(lines)
 
 
-def cmd_read(args):
-    """Read an existing concept document."""
-    bundle_dir = resolve_bundle_dir(args.bundle)
-    fm, body, raw = read_existing_doc(args.concept_id, bundle_dir)
-    if fm is None:
-        print(f"Error: concept not found: {args.concept_id}", file=sys.stderr)
-        sys.exit(1)
-    if args.format == "frontmatter":
-        print(serialize_yaml(fm))
-    elif args.format == "body":
-        print(body)
-    elif args.format == "json":
-        print(json.dumps({"frontmatter": fm, "body": body}, indent=2, ensure_ascii=False))
-    else:
-        # Full document
-        print(build_document(fm, body))
+# ---------------------------------------------------------------------------
+# Token estimation
+# ---------------------------------------------------------------------------
+
+def estimate_tokens(text):
+    """Rough token estimate: ~4 chars per token for English text.
+
+    More accurate than word count, cheaper than actual tokenization.
+    """
+    if not text:
+        return 0
+    return max(1, len(text) // 4)
 
 
-def cmd_write(args):
-    """Write or update a concept document."""
-    bundle_dir = resolve_bundle_dir(args.bundle)
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 
-    # Parse frontmatter YAML
-    frontmatter = parse_yaml_simple(args.frontmatter)
-
-    # Body: read from file or use provided text
-    body = args.body
-    if args.body_file:
-        with open(args.body_file, "r", encoding="utf-8") as f:
-            body = f.read()
-
-    result = write_concept_doc(args.concept_id, frontmatter, body, bundle_dir)
-    if result["status"] == "ok":
-        print(f"Written: {result['path']}")
-        for w in result.get("warnings", []):
-            print(f"  warning: {w}", file=sys.stderr)
-    else:
-        print(f"Error: {result.get('error', 'unknown')}", file=sys.stderr)
-        sys.exit(1)
+def _print_json(data):
+    """Print data as formatted JSON."""
+    print(json.dumps(data, indent=2, ensure_ascii=False, default=str))
 
 
 def cmd_list(args):
-    """List all concepts in a bundle."""
-    bundle_dir = resolve_bundle_dir(args.bundle)
-    concepts = list_concepts(bundle_dir)
-
+    concepts = list_concepts(args.bundle)
     if args.json:
-        print(json.dumps(concepts, indent=2, ensure_ascii=False))
-    elif not concepts:
-        print("No concepts found.")
+        _print_json(concepts)
     else:
+        if not concepts:
+            print("No concepts found.")
+            return
         for c in concepts:
-            title = c.get("title") or c["id"]
-            desc = c.get("description", "")
-            tag_str = f" [{', '.join(c['tags'])}]" if c.get("tags") else ""
-            print(f"  {c['id']:<40} {c['type']:<25} {title}{tag_str}")
-            if desc:
-                print(f"    {desc}")
+            title = c.get('title') or c['id'].split('/')[-1]
+            ctype = c.get('type', '?')
+            print(f"  {c['id']:<40s} {ctype:<25s} {title}")
+        print(f"\n{len(concepts)} concept(s)")
 
 
-def cmd_fetch(args):
-    """Fetch a URL and output as markdown, HTML, links, or JSON."""
-    html_text, final_url, status = fetch_url_content(args.url)
-
-    if status != 200:
-        print(f"Error: HTTP {status} fetching {args.url}", file=sys.stderr)
+def cmd_read(args):
+    doc = read_existing_doc(args.concept_id, args.bundle)
+    if doc is None:
+        print(f"Error: concept '{args.concept_id}' not found", file=sys.stderr)
         sys.exit(1)
-
-    if args.format == "html":
-        output = html_text
-    elif args.format == "links":
-        links = extract_links(html_text, args.url)
-        output = "\n".join(links)
-    elif args.format == "json":
-        markdown = html_to_markdown(html_text)
-        links = extract_links(html_text, args.url)
-        title_match = re.search(r"<title[^>]*>(.*?)</title>", html_text, re.IGNORECASE | re.DOTALL)
-        title = html_mod.unescape(title_match.group(1).strip()) if title_match else ""
-        output = json.dumps({
-            "url": final_url,
-            "title": title,
-            "markdown": markdown,
-            "links": links,
-            "status": status,
-        }, indent=2, ensure_ascii=False)
+    if args.json:
+        _print_json({'id': doc['id'], 'frontmatter': doc['frontmatter'], 'body': doc['body']})
+    elif args.frontmatter:
+        print(serialize_frontmatter(doc['frontmatter']))
+    elif args.body:
+        print(doc['body'])
     else:
-        output = html_to_markdown(html_text)
+        print(doc['raw'], end='')
 
-    if args.output:
-        with open(args.output, "w", encoding="utf-8") as f:
-            f.write(output)
-        print(f"Written to {args.output}", file=sys.stderr)
+
+def cmd_write(args):
+    fm = {}
+    if args.frontmatter_file:
+        with open(args.frontmatter_file) as f:
+            fm = yaml_parse(f.read())
+    elif args.frontmatter:
+        fm = yaml_parse(args.frontmatter)
+    if args.type and 'type' not in fm:
+        fm['type'] = args.type
+    body = ''
+    if args.body == '-':
+        body = sys.stdin.read()
+    elif args.body:
+        body = args.body
+    elif args.body_stdin:
+        body = sys.stdin.read()
+    if args.json_fm and args.frontmatter_file:
+        with open(args.frontmatter_file) as f:
+            fm = json.load(f)
+    elif args.json_fm and args.frontmatter:
+        fm = json.loads(args.frontmatter)
+    if not fm.get('type'):
+        print("Error: 'type' field is required in frontmatter", file=sys.stderr)
+        sys.exit(1)
+    path = write_concept_doc(args.concept_id, fm, body, args.bundle, dry_run=args.dry_run)
+    if args.dry_run:
+        pass
     else:
-        print(output)
+        print(f"Written: {path}")
 
 
-def cmd_crawl(args):
-    """Crawl seed URLs, extract content, optionally write as OKF concepts."""
-    bundle_dir = resolve_bundle_dir(args.bundle) if args.bundle else None
-    allowed_hosts = [h.strip() for h in args.allowed_hosts.split(",")] if args.allowed_hosts else None
-
-    pages = crawl_urls(args.seed_urls, max_pages=args.max_pages,
-                       allowed_hosts=allowed_hosts, bundle_dir=bundle_dir)
-
-    if args.format == "json":
-        print(json.dumps(pages, indent=2, ensure_ascii=False))
-    elif args.format == "links":
-        all_links = set()
-        for p in pages:
-            all_links.update(p.get("links", []))
-        print("\n".join(sorted(all_links)))
+def cmd_extract_links(args):
+    if args.file:
+        text = Path(args.file).read_text(encoding='utf-8')
     else:
-        # Summary
-        print(f"Fetched {len(pages)} pages (budget: {args.max_pages})")
-        for p in pages:
-            status = p.get("status", "?")
-            title = p.get("title", "(no title)")
-            url = p.get("url", "")
-            link_count = len(p.get("links", []))
-            if status != 200:
-                print(f"  [{status}] {url} — {p.get('error', '')}")
-            else:
-                print(f"  [200] {title}")
-                print(f"        {url} ({link_count} links)")
-
-        # Write as concepts if output dir given
-        if args.output and bundle_dir:
-            for i, p in enumerate(pages):
-                if p.get("status") != 200:
-                    continue
-                slug = urllib.parse.quote(p.get("title", f"page-{i}").lower().replace(" ", "-"))
-                slug = re.sub(r"[^a-z0-9\-]", "", slug)[:64]
-                concept_id = os.path.join(args.output, slug)
-
-                fm = {
-                    "type": "Reference",
-                    "title": p.get("title", ""),
-                    "description": "",
-                    "resource": p.get("url", ""),
-                    "sources": [{"id": "web-page", "resource": p.get("url", ""), "title": p.get("title", "")}],
-                }
-                body = p.get("markdown", "")
-                result = write_concept_doc(concept_id, fm, body, bundle_dir)
-                if result["status"] == "ok":
-                    print(f"  Written: {result['path']}")
+        text = sys.stdin.read()
+    links = extract_links(text)
+    if args.json:
+        _print_json(links)
+    else:
+        if not links:
+            print("No links found.")
+            return
+        for link in links:
+            print(f"  L{link['line']:>4}: [{link['text']}]({link['target']})")
+        print(f"\n{len(links)} link(s)")
 
 
 def cmd_validate(args):
-    """Validate an OKF bundle."""
-    bundle_dir = resolve_bundle_dir(args.bundle)
-    errors, warnings = validate_bundle(bundle_dir, strict=args.strict)
-
-    if args.json:
-        print(json.dumps({
-            "bundle": bundle_dir,
-            "errors": errors,
-            "warnings": warnings,
-            "valid": len(errors) == 0,
-        }, indent=2))
+    if args.file:
+        text = Path(args.file).read_text(encoding='utf-8')
+        fm, body = parse_frontmatter(text)
+        issues = validate_concept(fm, body, doc_path=args.file)
+        for sev, msg in issues:
+            tag = 'ERROR' if sev == 'error' else ('WARN' if sev == 'warn' else 'INFO')
+            print(f"  [{tag}] {msg}")
     else:
-        if errors:
-            print(f"Errors ({len(errors)}):")
-            for e in errors:
-                print(f"  ✗ {e}")
-        if warnings:
-            print(f"Warnings ({len(warnings)}):")
-            for w in warnings:
-                print(f"  ⚠ {w}")
-        if not errors and not warnings:
-            print("Bundle is valid with no warnings.")
-        elif not errors:
-            print(f"\nBundle is valid ({len(warnings)} warning(s)).")
-        else:
-            print(f"\nValidation failed ({len(errors)} error(s), {len(warnings)} warning(s)).")
-            if args.strict:
-                sys.exit(1)
-            if errors:
-                sys.exit(1)
-
-
-def cmd_index(args):
-    """Generate index.md for a directory."""
-    bundle_dir = resolve_bundle_dir(args.bundle)
-    target_dir = args.dir if args.dir else bundle_dir
-
-    content = generate_index(bundle_dir, target_dir, force=args.force)
-
-    index_path = os.path.join(target_dir, "index.md")
-    if args.output:
-        with open(args.output, "w", encoding="utf-8") as f:
-            f.write(content)
-        print(f"Written to {args.output}", file=sys.stderr)
-    else:
-        if os.path.isfile(index_path) and not args.force:
-            print(f"{index_path} already exists (use --force to overwrite)", file=sys.stderr)
-            print(content)
-        else:
-            with open(index_path, "w", encoding="utf-8") as f:
-                f.write(content)
-            print(f"Written: {index_path}")
-
-
-def cmd_info(args):
-    """Show info about a concept."""
-    bundle_dir = resolve_bundle_dir(args.bundle)
-    info = get_concept_info(args.concept_id, bundle_dir)
-
-    if info is None:
-        print(f"Error: concept not found: {args.concept_id}", file=sys.stderr)
-        sys.exit(1)
-
-    if args.json:
-        print(json.dumps(info, indent=2, ensure_ascii=False))
-    else:
-        fm = info["frontmatter"]
-        print(f"Concept: {info['id']}")
-        print(f"Type:    {fm.get('type', '(none)')}")
-        print(f"Title:   {fm.get('title', '(none)')}")
-        print(f"Desc:    {fm.get('description', '(none)')}")
-        print(f"Resource: {fm.get('resource', '(none)')}")
-        tags = fm.get("tags", [])
-        if tags:
-            print(f"Tags:    {', '.join(str(t) for t in tags)}")
-        status = fm.get("status", "stable")
-        print(f"Status:  {status}")
-        gen = fm.get("generated")
-        if gen:
-            print(f"Generated: {gen.get('by', '?')} at {gen.get('at', '?')}")
-        verified = fm.get("verified")
-        if verified:
-            print(f"Verified:  {json.dumps(verified)}")
-        sources = fm.get("sources")
-        if sources:
-            print(f"Sources:   {len(sources)} entries")
-        print(f"Body:    {info['body_lines']} lines, {info['body_words']} words")
-        if info.get("headings"):
-            print(f"Headings:")
-            for h in info["headings"]:
-                print(f"  {h}")
-
-
-def cmd_log(args):
-    """Append entry to log.md."""
-    bundle_dir = resolve_bundle_dir(args.bundle)
-    if args.add:
-        path = append_log(bundle_dir, entry=args.add)
-        print(f"Appended to: {path}")
-    else:
-        log_path = os.path.join(bundle_dir, "log.md")
-        if os.path.isfile(log_path):
-            with open(log_path, "r", encoding="utf-8") as f:
-                print(f.read())
-        else:
-            print("No log.md found.", file=sys.stderr)
+        results = validate_bundle(args.bundle)
+        total_errors = 0
+        total_warns = 0
+        for cid, issues in results:
+            has_error = False
+            for sev, msg in issues:
+                if sev == 'error':
+                    has_error = True
+                    total_errors += 1
+                elif sev == 'warn':
+                    total_warns += 1
+                if args.verbose or sev in ('error', 'warn'):
+                    if sev == 'info':
+                        print(f"  [OK]   {cid}")
+                    else:
+                        tag = 'ERROR' if sev == 'error' else 'WARN'
+                        print(f"  [{tag}] {cid}: {msg}")
+            if not has_error and not args.verbose:
+                print(f"  [OK]   {cid}")
+        print(f"\n{len(results)} concept(s), {total_errors} error(s), {total_warns} warning(s)")
+        if total_errors > 0:
             sys.exit(1)
 
 
-def main(argv=None):
+def cmd_index(args):
+    index_text = generate_index(args.bundle)
+    if args.output:
+        Path(args.output).write_text(index_text, encoding='utf-8')
+        print(f"Written: {args.output}")
+    else:
+        print(index_text, end='')
+
+
+def cmd_tokens(args):
+    if args.file:
+        text = Path(args.file).read_text(encoding='utf-8')
+        count = estimate_tokens(text)
+        print(f"{args.file}: ~{count} tokens ({len(text)} chars)")
+    elif args.bundle:
+        total = 0
+        for c in list_concepts(args.bundle):
+            doc = read_existing_doc(c['id'], args.bundle)
+            if doc:
+                count = estimate_tokens(doc['raw'])
+                total += count
+                if args.verbose:
+                    print(f"  {c['id']:<40s} ~{count:>6} tokens")
+        print(f"\nTotal: ~{total} tokens")
+    else:
+        text = sys.stdin.read()
+        count = estimate_tokens(text)
+        print(f"~{count} tokens ({len(text)} chars)")
+
+
+def cmd_create_bundle(args):
+    bundle = Path(args.bundle).resolve()
+    bundle.mkdir(parents=True, exist_ok=True)
+    if args.version:
+        index = f'---\nokf_version: "{args.version}"\n---\n\n'
+        index += f'# {args.name or "OKF Bundle"}\n\n'
+        (bundle / 'index.md').write_text(index, encoding='utf-8')
+        print(f"Created bundle at {bundle} (OKF v{args.version})")
+    else:
+        print(f"Created bundle at {bundle}")
+
+
+def main():
     parser = argparse.ArgumentParser(
-        prog="okf",
-        description="Open Knowledge Format (OKF v0.2) bundle tooling.",
+        prog='okf.sh',
+        description='OKF (Open Knowledge Format) bundle management tool',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=textwrap.dedent("""
+            Examples:
+              %(prog)s list ./bundle
+              %(prog)s read documents/report --bundle ./bundle
+              %(prog)s read documents/report --frontmatter --bundle ./bundle
+              %(prog)s write documents/report --type Document --body - --bundle ./bundle < body.md
+              cat body.md | %(prog)s write documents/report --type Document --body-stdin --bundle ./bundle
+              %(prog)s extract-links ./bundle/documents/report.md
+              %(prog)s validate ./bundle
+              %(prog)s index --bundle ./bundle --output ./bundle/index.md
+              %(prog)s tokens --bundle ./bundle --verbose
+        """),
     )
-    subparsers = parser.add_subparsers(dest="command", help="Subcommand")
+    sub = parser.add_subparsers(dest='command', help='Command to run')
 
-    # ── create ──────────────────────────────────────────────────────
-    p_create = subparsers.add_parser("create", help="Scaffold a new concept document")
-    p_create.add_argument("concept_id", help="Concept ID (relative path without .md)")
-    p_create.add_argument("--type", default="Reference", help="Concept type (default: Reference)")
-    p_create.add_argument("--title", default="", help="Display title")
-    p_create.add_argument("--description", "-d", default="", help="One-line description")
-    p_create.add_argument("--resource", "-r", default="", help="Canonical URI")
-    p_create.add_argument("--tags", default="", help="Comma-separated tags")
-    p_create.add_argument("--bundle", "-b", default=None, help="Bundle root directory")
-    p_create.set_defaults(func=cmd_create)
+    # list
+    p_list = sub.add_parser('list', help='List all concepts in a bundle')
+    p_list.add_argument('bundle', help='Bundle directory path')
+    p_list.add_argument('--json', action='store_true', help='Output as JSON')
 
-    # ── read ────────────────────────────────────────────────────────
-    p_read = subparsers.add_parser("read", help="Read an existing concept")
-    p_read.add_argument("concept_id", help="Concept ID")
-    p_read.add_argument("--format", "-f", choices=["full", "frontmatter", "body", "json"],
-                        default="full", help="Output format")
-    p_read.add_argument("--bundle", "-b", default=None, help="Bundle root directory")
-    p_read.set_defaults(func=cmd_read)
+    # read
+    p_read = sub.add_parser('read', help='Read an existing concept document')
+    p_read.add_argument('concept_id', help='Concept ID (relative path without .md)')
+    p_read.add_argument('--bundle', required=True, help='Bundle directory path')
+    p_read.add_argument('--json', action='store_true', help='Output as JSON')
+    p_read.add_argument('--frontmatter', action='store_true', help='Output frontmatter only (YAML)')
+    p_read.add_argument('--body', action='store_true', help='Output body only')
 
-    # ── write ───────────────────────────────────────────────────────
-    p_write = subparsers.add_parser("write", help="Write or update a concept")
-    p_write.add_argument("concept_id", help="Concept ID")
-    p_write.add_argument("--frontmatter", required=True, help="YAML frontmatter text")
-    p_write.add_argument("--body", default="", help="Body markdown text")
-    p_write.add_argument("--body-file", help="Read body from file")
-    p_write.add_argument("--bundle", "-b", default=None, help="Bundle root directory")
-    p_write.set_defaults(func=cmd_write)
+    # write
+    p_write = sub.add_parser('write', help='Write or update a concept document')
+    p_write.add_argument('concept_id', help='Concept ID (relative path without .md)')
+    p_write.add_argument('--bundle', required=True, help='Bundle directory path')
+    p_write.add_argument('--type', help='Concept type (required if not in frontmatter)')
+    p_write.add_argument('--frontmatter', help='Frontmatter as YAML string')
+    p_write.add_argument('--frontmatter-file', help='Frontmatter from YAML file')
+    p_write.add_argument('--json-fm', action='store_true', help='Parse frontmatter as JSON instead of YAML')
+    p_write.add_argument('--body', help='Body as string, or "-" to read from stdin')
+    p_write.add_argument('--body-stdin', action='store_true', help='Read body from stdin')
+    p_write.add_argument('--dry-run', action='store_true', help='Print document without writing')
 
-    # ── list ────────────────────────────────────────────────────────
-    p_list = subparsers.add_parser("list", help="List all concepts in a bundle")
-    p_list.add_argument("--bundle", "-b", default=None, help="Bundle root directory")
-    p_list.add_argument("--json", "-j", action="store_true", help="Output as JSON")
-    p_list.set_defaults(func=cmd_list)
+    # extract-links
+    p_links = sub.add_parser('extract-links', help='Extract cross-links from a document')
+    p_links.add_argument('--file', help='File to extract links from (default: stdin)')
+    p_links.add_argument('--json', action='store_true', help='Output as JSON')
 
-    # ── fetch ───────────────────────────────────────────────────────
-    p_fetch = subparsers.add_parser("fetch", help="Fetch a URL as markdown/HTML/links")
-    p_fetch.add_argument("url", help="URL to fetch")
-    p_fetch.add_argument("--format", "-f", choices=["md", "html", "links", "json"],
-                         default="md", help="Output format")
-    p_fetch.add_argument("--output", "-o", help="Output file path")
-    p_fetch.set_defaults(func=cmd_fetch)
+    # validate
+    p_val = sub.add_parser('validate', help='Validate bundle or single concept')
+    p_val.add_argument('bundle', nargs='?', help='Bundle directory path (omit if using --file)')
+    p_val.add_argument('--file', help='Single file to validate')
+    p_val.add_argument('--verbose', '-v', action='store_true', help='Show all messages including OK')
 
-    # ── crawl ───────────────────────────────────────────────────────
-    p_crawl = subparsers.add_parser("crawl", help="Crawl seed URLs, extract content")
-    p_crawl.add_argument("seed_urls", nargs="+", help="Seed URLs to start from")
-    p_crawl.add_argument("--max-pages", "-n", type=int, default=10, help="Max pages to fetch")
-    p_crawl.add_argument("--allowed-hosts", default="", help="Comma-separated allowed hosts")
-    p_crawl.add_argument("--output", "-o", help="Output dir for concepts (relative to bundle)")
-    p_crawl.add_argument("--bundle", "-b", default=None, help="Bundle root directory")
-    p_crawl.add_argument("--format", "-f", choices=["summary", "json", "links"],
-                         default="summary", help="Output format")
-    p_crawl.set_defaults(func=cmd_crawl)
+    # index
+    p_idx = sub.add_parser('index', help='Generate index.md for a bundle directory')
+    p_idx.add_argument('--bundle', required=True, help='Bundle directory path')
+    p_idx.add_argument('--output', '-o', help='Output file path (default: stdout)')
 
-    # ── validate ────────────────────────────────────────────────────
-    p_val = subparsers.add_parser("validate", help="Validate bundle conformance")
-    p_val.add_argument("--bundle", "-b", default=None, help="Bundle root directory")
-    p_val.add_argument("--strict", "-s", action="store_true", help="Exit non-zero on warnings")
-    p_val.add_argument("--json", "-j", action="store_true", help="Output as JSON")
-    p_val.set_defaults(func=cmd_validate)
+    # tokens
+    p_tok = sub.add_parser('tokens', help='Estimate token count')
+    p_tok.add_argument('--file', help='Single file to estimate')
+    p_tok.add_argument('--bundle', help='Bundle directory (estimates all concepts)')
+    p_tok.add_argument('--verbose', '-v', action='store_true', help='Show per-file breakdown')
 
-    # ── index ───────────────────────────────────────────────────────
-    p_idx = subparsers.add_parser("index", help="Generate index.md")
-    p_idx.add_argument("--bundle", "-b", default=None, help="Bundle root directory")
-    p_idx.add_argument("--dir", "-d", default=None, help="Target directory")
-    p_idx.add_argument("--force", action="store_true", help="Overwrite existing index.md")
-    p_idx.add_argument("--output", "-o", help="Output file path")
-    p_idx.set_defaults(func=cmd_index)
+    # create-bundle
+    p_cb = sub.add_parser('create-bundle', help='Create a new empty bundle directory')
+    p_cb.add_argument('bundle', help='Bundle directory path')
+    p_cb.add_argument('--version', help='OKF version to declare (e.g. 0.2)')
+    p_cb.add_argument('--name', help='Bundle display name')
 
-    # ── info ────────────────────────────────────────────────────────
-    p_info = subparsers.add_parser("info", help="Show concept info")
-    p_info.add_argument("concept_id", help="Concept ID")
-    p_info.add_argument("--bundle", "-b", default=None, help="Bundle root directory")
-    p_info.add_argument("--json", "-j", action="store_true", help="Output as JSON")
-    p_info.set_defaults(func=cmd_info)
-
-    # ── log ─────────────────────────────────────────────────────────
-    p_log = subparsers.add_parser("log", help="View or append to log.md")
-    p_log.add_argument("--bundle", "-b", default=None, help="Bundle root directory")
-    p_log.add_argument("--add", "-a", help="Append entry (format: 'Action: message')")
-    p_log.set_defaults(func=cmd_log)
-
-    args = parser.parse_args(argv)
-
+    args = parser.parse_args()
     if not args.command:
         parser.print_help()
         sys.exit(1)
 
-    args.func(args)
+    commands = {
+        'list': cmd_list,
+        'read': cmd_read,
+        'write': cmd_write,
+        'extract-links': cmd_extract_links,
+        'validate': cmd_validate,
+        'index': cmd_index,
+        'tokens': cmd_tokens,
+        'create-bundle': cmd_create_bundle,
+    }
+    commands[args.command](args)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

@@ -70,7 +70,20 @@ cmd_to_md() {
             printf '  Converting to Markdown...\n' >&2
             pandoc -f xlsx -t markdown "$tmp" -o "$output"
             ;;
-        pdf|docx|pptx|odt)
+        pdf)
+            printf '  Converting PDF to Markdown (pdftotext)...
+' >&2
+            local pages
+            pages=$(pdfinfo "$input" 2>/dev/null | grep '^Pages:' | awk '{print $2}')
+            [[ -n "$pages" ]] || die "cannot determine page count (need pdfinfo)"
+            > "$output"
+            local p
+            for (( p=1; p<=pages; p++ )); do
+                printf '<!-- page %d -->\n' "$p" >> "$output"
+                pdftotext -layout -f "$p" -l "$p" "$input" - | tr -d '\f' >> "$output"
+            done
+            ;;
+        docx|pptx|odt)
             pandoc -f "$ext" -t markdown "$input" -o "$output"
             ;;
         *)
