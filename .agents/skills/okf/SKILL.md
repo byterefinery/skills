@@ -38,19 +38,27 @@ The format answers five questions that plain markdown cannot:
 
 The primary workflow takes one source — a file path or URL — and produces an OKF bundle:
 
-1. **Ingest** the source in chunks — convert or fetch incrementally, processing overlapping windows (previous, current, next chunk) so context carries across boundaries.
-2. **Extract** every concept — do not skip or summarize away details. The bundle must be sufficient to recreate the original source (lossy in format, semantically complete).
-3. **Write** one `.md` file per concept with frontmatter (`type` required) and structured body.
-4. **Cross-link** concepts with file-relative markdown links.
-5. **Generate** `index.md` at the bundle root.
+1. **Detect language** — identify the source's natural language from its content. All produced filenames, titles, descriptions, body prose, and `index.md` entries use this language. Exception: `log.md` is always in English.
+2. **Ingest** the source in chunks — convert or fetch incrementally, processing overlapping windows (previous, current, next chunk) so context carries across boundaries.
+3. **Extract** every concept — do not skip or summarize away details. The bundle must be sufficient to recreate the original source (lossy in format, semantically complete).
+4. **Write** one `.md` file per concept with frontmatter (`type` required) and structured body, all in the detected language.
+5. **Cross-link** concepts with file-relative markdown links.
+6. **Generate** `index.md` at the bundle root, in the detected language.
+
+**Language detection.** Before processing, detect the source's natural language:
+
+- Read the first ~500 lines of converted content and identify the dominant language.
+- Use it for all produced content: filenames (URL-safe slugs), `title`, `description`, body prose, `index.md` headings and entries.
+- `log.md` is always written in English regardless of source language.
+- Multilingual sources: use the primary language (headings and narrative prose). Mixed-language content may produce concepts in their respective languages.
 
 **Chunked ingestion.** Large sources are processed iteratively:
 
-- Convert the full source to markdown first (`markdown.sh to-md <file>` or `webfetch.sh <url>`). For PDF, the converter inserts `<!-- page N -->` comments — use these to map lines back to page numbers for `location`.
+- Convert the full source to markdown first (`markdown.sh to-md <file>` or `webfetch.sh <url>`). For PDF, the converter inserts `<!-- page N -->` comments — use these for `location`.
 - Split into chunks of manageable size (e.g. 500–1000 lines each).
-- Process each chunk with a **sliding window**: include the tail of the previous chunk, the full current chunk, and the head of the next chunk. This preserves context for concepts that span chunk boundaries — a table header on one page, data on the next; a sentence split across slides; a formula reference across sheets.
-- Record `location` (pages, slides, sheets, sections) for every source reference so provenance survives chunking.
-- After all chunks are processed, merge extracted concepts — deduplicate by title/content, merge `sources` entries that refer to the same concept from different chunks.
+- Process each chunk with a **sliding window**: tail of previous chunk + full current chunk + head of next chunk. This preserves context for concepts spanning boundaries — table headers on one page with data on the next, sentences split across slides, formula references across sheets.
+- Record `location` (pages, slides, sheets, sections) for every source reference.
+- After all chunks, merge extracted concepts — deduplicate by title/content, merge `sources` entries from different chunks.
 
 **Ingest examples:**
 
@@ -59,7 +67,7 @@ markdown.sh to-md ./annual-report.pdf   # PDF, Word, Excel, PPTX
 webfetch.sh https://example.com/docs/api  # web page → markdown
 ```
 
-Track the original source in `sources[].resource` and page/slide/sheet locations in `sources[].location`.
+Track original source in `sources[].resource` and page/slide/sheet locations in `sources[].location`.
 
 ### Validating a bundle
 
@@ -330,38 +338,7 @@ parameters:
     SELECT category, SUM(amount) AS revenue FROM orders GROUP BY category ORDER BY revenue DESC
 ```
 
-Example — Bash:
-
-```yaml
----
-type: Attested Computation
-title: Disk usage summary
-runtime: bash
-parameters:
-  - { name: target_dir, type: string, required: true }
----
-
-# Computation
-
-    du -sh "${target_dir}"/*/ 2>/dev/null | sort -rh | head -10
-```
-
-Example — JavaScript:
-
-```yaml
----
-type: Attested Computation
-title: Parse JSONL events
-runtime: javascript
-parameters:
-  - { name: input_file, type: string, required: true }
----
-
-# Computation
-
-    const lines = require('fs').readFileSync(input_file, 'utf8').trim().split('\n');
-    console.log(JSON.stringify({ count: lines.length }, null, 2));
-```
+Other runtimes (`bash`, `javascript`, `typescript`, `html`, `css`, `json`, `yaml`, `toml`) follow the same pattern — `runtime` names the language, `# Computation` holds the code.
 
 ### Extensions
 
@@ -400,13 +377,13 @@ A bundle is a directory tree of markdown files:
 
 ```
 path/to/bundle/
-  index.md                      # Optional. Directory listing for progressive disclosure.
-  log.md                        # Optional. Chronological history of updates.
+  index.md                      # Optional. Directory listing.
+  log.md                        # Optional. Update history (always English).
   <concept>.md                  # A concept at the bundle root.
   <subdirectory>/
     index.md
     <concept>.md
-    references/                 # Optional. External material, run instructions, code.
+    references/
       <reference>.md
 ```
 
@@ -421,14 +398,13 @@ path/to/bundle/
 * [Revenue computation](references/metrics/revenue.md) — Sanctioned revenue calculation.
 ```
 
-**`log.md`** — date-grouped change entries, newest first:
+**`log.md`** — date-grouped change entries, newest first. Always written in English.
 
 ```markdown
 # Directory Update Log
 
 ## 2025-07-15
-* **Update**: Added location metadata to [Annual Report](annual-report-2024.md) sources.
-* **Creation**: Established [Revenue computation](references/metrics/revenue.md).
+* **Creation**: Established bundle from annual-report-2024.pdf.
 ```
 
 ## Cross-linking
@@ -440,13 +416,13 @@ Rules: one link per concept mention per section; do not link from headers, code 
 ## Gotchas
 
 - **Always use file-relative paths for cross-links** — never absolute paths beginning with `/`.
-- **`type` is the only required frontmatter field** — a concept with just `type: Concept` is fully conformant.
+- **`type` is the only required frontmatter field** — `type: Concept` alone is fully conformant.
 - **`location` varies by source type** — `pages` for PDF, `slides` for PPTX, `sheet`+`range` for XLSX, `section`/`heading` for web. Omit when unknown.
-- **`sources` lives in frontmatter, not the body** — no `# Citations` or `# References` body sections. Use `sources` + per-claim footnotes.
-- **Footnote labels must match `sources[].id`** — the label is a join key, not free text.
+- **`sources` lives in frontmatter, not the body** — no `# Citations` body sections. Use `sources` + per-claim footnotes.
+- **Footnote labels must match `sources[].id`** — the label is a join key.
 - **`generated` and `verified` are distinct** — who *wrote* need not be who *confirmed*.
 - **Actor convention keys off `human:` prefix** — trust tiers derive from `human:<id>` in `verified`.
 - **`status` absent means `stable`** — only set for `draft` or `deprecated`.
-- **Attested Computations are standalone** — do not embed in other types; make its own document and link.
+- **Attested Computations are standalone** — do not embed in other types.
 - **`index.md` has no frontmatter** — except bundle root may carry `okf_version: "0.2"`.
-- **Bundles are consumed without source files** — `sources` records provenance, originals need not be present.
+- **`log.md` is always in English** — all other bundle files follow the source's detected language.
