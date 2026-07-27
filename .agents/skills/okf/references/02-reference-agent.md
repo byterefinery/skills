@@ -38,6 +38,11 @@ Do **not** add a `# Citations` section; provenance lives in the `sources` frontm
 
 Record the materials this concept derives from in the `sources` frontmatter list. Each entry is a mapping with a required `resource` (the URI), a stable `id` key, and a human-readable `title`. Include this concept's own `resource` value as a `sources` entry (when present), followed by any URLs or files that informed the description. Do not invent URLs; record only sources you actually know.
 
+Always record **where in the source** the content was located — this lets users and agents verify later that the content was really there:
+- **PDF/Word**: `pages` — list of page numbers (e.g., `[1, 2, 3, 5, 7-9]`)
+- **Excel**: `sheets` — sheet names (e.g., `[Revenue, Summary]`)
+- **URLs**: `resource` is enough (whole page is the source)
+
 To attribute a specific claim in the body, end the sentence with a markdown footnote whose label matches a `sources[].id` (e.g., a sentence ending in `[^annual-report]`, with a matching `[^annual-report]: Annual Report 2024` footnote definition later in the body).
 
 ## Cross-linking
@@ -64,7 +69,7 @@ Rules:
 - Do not invent facts, numbers, or details that are not in the source material
 - Do not include preamble, apologies, or reasoning narration in the document body. The body must be valid markdown that a human or downstream agent can consume directly
 - **Body must not be empty** — every concept needs body content after frontmatter. If you cannot produce meaningful content, do not create the concept
-- **Language follows input** — body text and concept filenames must use the same language as the source material. Never translate. If input is German, write German body text and derive filenames from German headings. This keeps the bundle consistent for the end-user
+- **Language follows input** — each section keeps its source language; documents may be multi-lingual. Never translate. For filenames: pick the dominant language of the content. If undetermined, fallback to English
 
 ## Content Processing
 

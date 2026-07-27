@@ -61,6 +61,11 @@ sources:
     title: Annual Report 2024 (PDF)
     author: company:investor-relations
     last_modified: 2025-01-15
+    pages: [1, 2, 3, 5, 7-9]
+  - id: quarterly-xlsx
+    resource: ./data/q4-results.xlsx
+    title: Q4 Results
+    sheets: [Revenue, Summary]
 generated: { by: okf_tool/okf.sh, at: 2025-01-20T10:00:00Z }
 verified: { by: human:alice, at: 2025-01-21T09:00:00Z }
 status: stable                    # draft | stable | deprecated
@@ -136,7 +141,7 @@ The agent controls how much content to preserve. Three levels:
 
 Every OKF document must be:
 - **Non-empty body** — every concept must have body content after frontmatter. A concept with frontmatter but no body is useless. If you cannot produce meaningful body content, do not create the concept.
-- **Same language as input** — the body text and concept filenames must use the same language as the source material. If input is German, write German body text and use German heading text for filenames (slugged). If input is Japanese, same rule. Never translate; never mix languages. This keeps the bundle consistent and intuitive for the end-user.
+- **Language preservation** — each section keeps the language of its source material. A document may be multi-lingual: a German section stays German, an English appendix stays English. Never translate. For filenames: pick the dominant language of the content. If the content is evenly split or you cannot determine a dominant language, fallback to English. This keeps the bundle consistent and intuitive for the end-user.
 - **Valid markdown** — correct syntax for headings, lists, tables, code blocks, links, footnotes
 - **Concise** — no filler, no preamble, no reasoning narration in the body
 - **Clean** — no page artifacts, no repeated headers, no boilerplate
@@ -223,7 +228,13 @@ When updating an existing concept:
 
 ### Sources and per-claim attribution
 
-Record materials a concept derives from in the `sources` frontmatter list. Each entry needs `resource` (required), a stable `id`, and a human-readable `title`. Include the concept's own `resource` as a sources entry when applicable. Do not invent URLs.
+Record materials a concept derives from in the `sources` frontmatter list. Each entry needs `resource` (required), a stable `id`, and a human-readable `title`. Do not invent URLs.
+
+Always record **where in the source** the content was located — this lets users and agents verify later that the content was really there:
+- **PDF/Word**: `pages` — page numbers (e.g., `[1, 2, 3, 5, 7-9]`)
+- **Excel**: `sheets` — sheet names (e.g., `[Revenue, Summary]`)
+- **URLs**: `resource` is enough (whole page is the source)
+- **Local files**: `resource` with path, plus `pages`/`sheets` when applicable
 
 To attribute a specific claim in the body, use a markdown footnote whose label matches a `sources[].id`:
 
@@ -247,9 +258,10 @@ The footnote label is the join key into `sources`; consumers resolve attribution
 
 - **`type` is the only required frontmatter field** — a concept with just `type` is conformant. All other fields are optional. Their absence carries meaning (unverified ≠ rejected).
 - **Body must never be empty** — every concept needs body content. Frontmatter alone is not enough. If you cannot produce meaningful body content, do not create the concept.
-- **Language follows input** — body text and concept filenames must use the same language as the source material. Never translate. If input is in German, body is in German and filenames derive from German headings. This keeps the bundle consistent and intuitive for the end-user.
+- **Language follows input** — each section keeps its source language; documents may be multi-lingual. Never translate. For filenames: pick the dominant language of the content. If undetermined, fallback to English.
 - **`generated` is auto-filled** — leave it unset in your frontmatter and the tool records actor and timestamp. Only override if you need a specific value.
 - **`sources` must not shrink** — when augmenting, always include existing sources plus new ones. The validator catches missing entries.
+- **Always record source locations** — `pages` for PDF/Word, `sheets` for Excel, `resource` for URLs. This lets users and agents verify later that content was really there. Never omit this.
 - **Cross-links use relative paths** — `[budget](budget.md)`, not `[budget](/documents/budget.md)`. Absolute paths break GitHub rendering.
 - **Footnote labels must match `sources[].id`** — the label `[^my-source]` must correspond to a `sources` entry with `id: my-source`. Consumers resolve attribution through the matching entry, not the footnote prose.
 - **Reference files need numeric prefixes for ordering** — use `01-topic.md`, `02-topic.md` etc. when a references directory has many files.
@@ -259,13 +271,12 @@ The footnote label is the join key into `sources`; consumers resolve attribution
 - **Trust tiers are derived, not stored** — `unverified` (no `verified`), `machine-confirmed` (non-`human:` actors only), `human-reviewed` (has `human:` actor). The tool does not compute tiers; this is for the consuming agent.
 - **Actor convention** — use `<producer>/<version>` for tools, `human:<id>` for people, `process:<id>` for automated processes. Trust tier derivation keys off the `human:` prefix.
 - **Document conversion is not this skill's job** — use `markdown.sh to-md` for PDF/Office files, `webfetch` for URLs. This skill only manages the resulting OKF bundle.
-- **Page artifacts must be stripped** — page numbers, repeated headers/footers, watermarks from PDF conversion. The LLM merges split content across page boundaries into continuous, coherent text.
-- **Content is split intelligently, not copied verbatim** — OKF is a lossy process that preserves meaning. The LLM groups coherent content, strips artifacts, and produces clean structured markdown. The result must recreate the original semantically if needed.
-- **Documents should be right-sized** — not too long (split via `ingest` or multiple `write-doc` calls), not too short (merge related sections). A concept should cover one coherent topic.
+- **Page artifacts must be stripped** — page numbers, repeated headers/footers, watermarks. The LLM merges split content across page boundaries into continuous, coherent text.
+- **Content is split intelligently, not copied verbatim** — OKF is lossy but preserves meaning. The result must recreate the original semantically if needed.
+- **Documents should be right-sized** — not too long (split via `ingest`), not too short (merge related sections). A concept covers one coherent topic.
 - **Always produce valid markdown** — correct heading hierarchy, proper list syntax, well-formed tables, fenced code blocks with language hints, working links and footnotes.
-- **Fidelity defaults to `high`** — the agent preserves all content unless instructed otherwise. Financial data, tables, and numbers are never lost.
+- **Fidelity defaults to `high`** — agent preserves all content unless instructed otherwise. Financial data, tables, and numbers are never lost.
 - **Fidelity is the agent's job** — the agent decides how much to summarize/filter when composing concept documents.
-- **Financial data is always protected** — regardless of fidelity level, currency amounts, financial percentages, and tabular financial data are never summarized or dropped. When in doubt, preserve the data.
 - **`--bundle` is always first argument** — every subcommand takes `--bundle` before other options.
 - **`--body -` reads from stdin** — use `-` as the body value to pipe content. Works with `write-doc` and `ingest`.
 - **`ingest` splits at H1 headings** — each `# Heading` becomes a separate concept. H2/H3 headings stay within their parent concept.

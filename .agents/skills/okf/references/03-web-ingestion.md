@@ -74,7 +74,7 @@ Before stopping, **verify no reference you minted is orphaned**: every `referenc
 - Be concrete. Use concrete field names, concrete values, concrete examples
 - Do not include preamble, apologies, or reasoning narration in document bodies. Bodies must be valid markdown ready for direct consumption
 - **Body must not be empty** — every concept needs body content after frontmatter
-- **Language follows input** — body text and concept filenames must use the same language as the source page. Never translate
+- **Language follows input** — each section keeps its source language. Never translate. For filenames: pick the dominant language. If undetermined, fallback to English
 
 ## Content Processing
 
