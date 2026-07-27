@@ -34,33 +34,37 @@ The format answers five questions that plain markdown cannot:
 
 ## Usage
 
-### Converting documents with `markdown` skill
+### Creating a bundle from a single source
+
+The primary workflow takes one source — a file path or URL — and produces an OKF bundle:
+
+1. **Ingest** the source:
+   - **PDF, Word, Excel, PowerPoint** — convert with `markdown.sh --to md <file>`
+   - **Web page** — fetch with `webfetch.sh <url>`
+   - **Markdown** — read directly
+2. **Extract** concepts from the converted content — identify distinct topics, definitions, metrics, procedures.
+3. **Write** one `.md` file per concept with frontmatter (`type` required) and structured body.
+4. **Cross-link** concepts with file-relative markdown links.
+5. **Generate** `index.md` at the bundle root.
+
+**Ingest examples:**
 
 ```bash
-# PDF, Word, Excel (formula evaluation), PowerPoint
-markdown.sh --to md ./annual-report.pdf
-markdown.sh --to md ./financials.xlsx
+markdown.sh --to md ./annual-report.pdf   # PDF, Word, Excel, PPTX
+webfetch.sh https://example.com/docs/api  # web page → markdown
 ```
 
-Track the original file path in `sources[].resource` and page/slide/sheet locations in `sources[].location`.
+Track the original source in `sources[].resource` and page/slide/sheet locations in `sources[].location`.
 
-### Fetching web pages with `webfetch` skill
+### Validating a bundle
 
 ```bash
-webfetch.sh https://example.com/docs/api
-webfetch.sh --file ./api-docs.md https://example.com/docs/api
+# Validate entire bundle
+okf.sh validate --bundle ./my-bundle
+
+# Validate specific files
+okf.sh validate --bundle ./my-bundle concepts/revenue.md
 ```
-
-Track the fetched URL in `sources[].resource` and section/heading in `sources[].location`.
-
-### Creating a bundle
-
-1. Convert or fetch all source documents.
-2. Read the converted content and identify distinct concepts.
-3. For each concept, write a `.md` file with frontmatter (`type` required; `title`, `description`, `sources` recommended) and a structured body.
-4. Cross-link concepts with file-relative markdown links.
-5. Optionally generate `index.md` files per directory.
-6. Optionally write a `log.md` with date-grouped change entries.
 
 ### Updating a bundle
 
