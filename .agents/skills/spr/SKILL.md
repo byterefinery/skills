@@ -1,6 +1,11 @@
 ---
 name: spr
 description: Compress text into Sparse Priming Representations (SPR) or decompress SPRs back to full text. Supports PDF/Office input via markdown conversion. Use when the user wants to compress content into SPR format, decompress/expand SPRs, or needs token-efficient knowledge representations for LLM context.
+metadata:
+  tags:
+    - meta
+    - knowledge
+    - spr
 ---
 
 # spr
@@ -55,9 +60,9 @@ When the user provides an SPR to decompress:
 
 ### Input Handling
 
-- **PDF or Office files** — use the `markdown` skill to convert the input file to markdown first. Then decompress the SPR content found in the resulting markdown. The output file should use the basename of the original input with suffix `-decompressed` and extension `.md` (e.g., `report-spr.pdf` → `report-spr-decompressed.md`).
+- **PDF or Office files** — use the `markdown` skill to convert the input file to markdown first. Then decompress the SPR content found in the resulting markdown. The output file should use the basename of the original input with suffix `-decompressed` and extension `.md` (e.g., `report-compressed.pdf` → `report-decompressed.md`).
 - **Large SPR files** — iteratively and intelligently read the SPR file in chunks so it fits within context.
-- **Multi-lingual SPRs** — reproduce the original multi-lingual context. Each section should be decompressed in the same language it was originally compressed from. Follow language cues embedded in the primings. Use the `read` tool with `offset`/`limit` to process segments. Decompress each chunk, then stitch the results into a single coherent output, resolving any cross-chunk references or repeated context. The output file should use the basename of the input with suffix `-decompressed` and extension `.md` (e.g., `notes-spr.md` → `notes-spr-decompressed.md`).
+- **Multi-lingual SPRs** — reproduce the original multi-lingual context. Each section should be decompressed in the same language it was originally compressed from. Follow language cues embedded in the primings. Use the `read` tool with `offset`/`limit` to process segments. Decompress each chunk, then stitch the results into a single coherent output, resolving any cross-chunk references or repeated context. The output file should use the basename of the input with suffix `-decompressed` and extension `.md` (e.g., `notes-compressed.md` → `notes-decompressed.md`).
 - **Text prompt** — decompress the SPR directly and output the result as text.
 
 ### Decompression Methodology
@@ -86,7 +91,7 @@ Go from compressed state to decompressed by following each priming and expanding
 - **Iterative refinement helps** — if the decompressed output misses key details, the SPR may need additional primings. Compression is sometimes an iterative process to find the right balance of brevity and fidelity.
 - **No scripts involved** — this skill operates entirely through text instructions. Compression and decompression are performed directly by the LLM following the methodology above.
 - **Iterative reading for large files** — always use `read` with `offset`/`limit` to process files that won't fit in context in one pass. For compression, chunk → compress each chunk → merge SPRs into one coherent output. For decompression, chunk → decompress each chunk → stitch results together. Remove redundancy and resolve cross-chunk references in the merge step.
-- **Output naming convention** — compressed outputs get `-compressed` suffix, decompressed outputs get `-decompressed` suffix, appended to the input file's basename before the extension (e.g., `report.pdf` → `report-compressed.md`, `notes-spr.md` → `notes-spr-decompressed.md`).
+- **Output naming convention** — compressed outputs get `-compressed` suffix, decompressed outputs get `-decompressed` suffix, appended to the input file's basename before the extension (e.g., `report.pdf` → `report-compressed.md`, `notes-compressed.md` → `notes-decompressed.md`).
 - **Multi-lingual content carries meaning in its language** — language choice is not incidental. Legal terms, technical jargon, and cultural references often lose precision when translated. Keep primings in the original language; note switches explicitly.
 - **Incremental compression beats chunk-and-merge for very long files** — reading linearly and updating a running SPR lets you carry forward context from earlier sections. Chunk-and-merge works but risks losing cross-section associations. The incremental approach produces a more coherent SPR.
 - **Table data needs explicit markers** — without noting that a section was tabular, the decompressor will flatten it into prose. Always specify structure (columns, rows, key trends) when compressing tables. When decompressing, use these markers to rebuild proper Markdown tables — the priming's column/row description is the skeleton, surrounding primings provide the values.

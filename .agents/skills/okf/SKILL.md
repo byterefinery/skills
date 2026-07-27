@@ -1,15 +1,12 @@
 ---
 name: okf
 description: Creates, validates, and manages Open Knowledge Format (OKF v0.2) bundles — directory trees of markdown concept documents with YAML frontmatter. Use when the user needs to create a knowledge bundle from PDF, Office, or web sources; write or update concept documents; ingest markdown into multiple linked concepts; validate OKF conformance; generate index files; or manage cross-links between concepts. Relies on `markdown` skill for PDF/Office conversion, `webfetch` for URL fetching, and `websearch` for online searches. OKF documents are linked together so agents can traverse and analyze content without the original source files ever being present again.
-license: Apache-2.0
-compatibility: Requires Python 3.9+
-allowed-tools: Bash(okf.sh:*) Read Write
 metadata:
   tags:
+    - meta
+    - okf
     - knowledge
     - documentation
-    - okf
-    - bundles
 ---
 
 # okf
