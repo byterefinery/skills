@@ -38,19 +38,24 @@ The format answers five questions that plain markdown cannot:
 
 The primary workflow takes one source — a file path or URL — and produces an OKF bundle:
 
-1. **Ingest** the source:
-   - **PDF, Word, Excel, PowerPoint** — convert with `markdown.sh --to md <file>`
-   - **Web page** — fetch with `webfetch.sh <url>`
-   - **Markdown** — read directly
-2. **Extract** concepts from the converted content — identify distinct topics, definitions, metrics, procedures.
+1. **Ingest** the source in chunks — convert or fetch incrementally, processing overlapping windows (previous, current, next chunk) so context carries across boundaries.
+2. **Extract** every concept — do not skip or summarize away details. The bundle must be sufficient to recreate the original source (lossy in format, semantically complete).
 3. **Write** one `.md` file per concept with frontmatter (`type` required) and structured body.
 4. **Cross-link** concepts with file-relative markdown links.
 5. **Generate** `index.md` at the bundle root.
 
+**Chunked ingestion.** Large sources are processed iteratively:
+
+- Convert the full source to markdown first (`markdown.sh to-md <file>` or `webfetch.sh <url>`). For PDF, the converter inserts `<!-- page N -->` comments — use these to map lines back to page numbers for `location`.
+- Split into chunks of manageable size (e.g. 500–1000 lines each).
+- Process each chunk with a **sliding window**: include the tail of the previous chunk, the full current chunk, and the head of the next chunk. This preserves context for concepts that span chunk boundaries — a table header on one page, data on the next; a sentence split across slides; a formula reference across sheets.
+- Record `location` (pages, slides, sheets, sections) for every source reference so provenance survives chunking.
+- After all chunks are processed, merge extracted concepts — deduplicate by title/content, merge `sources` entries that refer to the same concept from different chunks.
+
 **Ingest examples:**
 
 ```bash
-markdown.sh --to md ./annual-report.pdf   # PDF, Word, Excel, PPTX
+markdown.sh to-md ./annual-report.pdf   # PDF, Word, Excel, PPTX
 webfetch.sh https://example.com/docs/api  # web page → markdown
 ```
 
@@ -281,7 +286,7 @@ An Attested Computation concept carries not just what a value *means* but a sanc
 | `executor.receipt` | No | Fields a run must return — the evidence the attester inspects. |
 | `attester.resource` | No | Deterministic (no-LLM) code that takes a receipt and returns a verdict. |
 
-A computation is its own standalone concept. Other concepts that need the value link to it with a normal markdown link.
+A computation is its own standalone concept; other concepts link to it.
 
 Example — Python:
 
@@ -289,7 +294,6 @@ Example — Python:
 ---
 type: Attested Computation
 title: Monthly active users
-description: Distinct users with at least one event in the month.
 runtime: python
 parameters:
   - { name: month, type: string, required: true }
@@ -304,7 +308,7 @@ attester:
 # Computation
 
     import json
-    def compute(month: str, data_path: str) -> int:
+    def compute(month, data_path):
         with open(data_path) as f:
             events = json.load(f)
         return len({e["user_id"] for e in events if e["ts"].startswith(month)})
@@ -335,12 +339,11 @@ title: Disk usage summary
 runtime: bash
 parameters:
   - { name: target_dir, type: string, required: true }
-  - { name: top_n, type: integer, required: false }
 ---
 
 # Computation
 
-    du -sh "${target_dir}"/*/ 2>/dev/null | sort -rh | head -n "${top_n:-10}"
+    du -sh "${target_dir}"/*/ 2>/dev/null | sort -rh | head -10
 ```
 
 Example — JavaScript:
@@ -352,14 +355,12 @@ title: Parse JSONL events
 runtime: javascript
 parameters:
   - { name: input_file, type: string, required: true }
-  - { name: event_type, type: string, required: false }
 ---
 
 # Computation
 
     const lines = require('fs').readFileSync(input_file, 'utf8').trim().split('\n');
-    const events = lines.map(l => JSON.parse(l)).filter(e => !event_type || e.type === event_type);
-    console.log(JSON.stringify({ count: events.length }, null, 2));
+    console.log(JSON.stringify({ count: lines.length }, null, 2));
 ```
 
 ### Extensions
@@ -432,28 +433,20 @@ path/to/bundle/
 
 ## Cross-linking
 
-Concepts link to each other using file-relative markdown links. Always use paths relative to the current document's directory — never absolute paths beginning with `/`.
+Concepts link to each other using file-relative markdown links — never absolute paths beginning with `/`.
 
-```markdown
-See the [revenue computation](../references/metrics/revenue.md).
-```
-
-Rules:
-- One link per concept mention per section is enough.
-- Do not link from headers, fenced code blocks, or schema field-name listings.
-- Do not link a document to itself.
-- Consumers must tolerate broken links — a missing target is not malformed.
+Rules: one link per concept mention per section; do not link from headers, code blocks, or field listings; do not link a document to itself; consumers tolerate broken links.
 
 ## Gotchas
 
-- **Always use file-relative paths for cross-links** — never use absolute paths beginning with `/`. An absolute path breaks local file browsing.
+- **Always use file-relative paths for cross-links** — never absolute paths beginning with `/`.
 - **`type` is the only required frontmatter field** — a concept with just `type: Concept` is fully conformant.
-- **`location` varies by source type** — `pages` for PDF, `slides` for PPTX, `sheet` + `range` for XLSX, `section`/`heading` for web. Omit when unknown.
-- **`sources` lives in frontmatter, not the body** — do not write `# Citations` or `# References` body sections. Use `sources` frontmatter + per-claim footnotes.
+- **`location` varies by source type** — `pages` for PDF, `slides` for PPTX, `sheet`+`range` for XLSX, `section`/`heading` for web. Omit when unknown.
+- **`sources` lives in frontmatter, not the body** — no `# Citations` or `# References` body sections. Use `sources` + per-claim footnotes.
 - **Footnote labels must match `sources[].id`** — the label is a join key, not free text.
 - **`generated` and `verified` are distinct** — who *wrote* need not be who *confirmed*.
-- **Actor convention keys off `human:` prefix** — trust tiers derive from `human:<id>` in `verified`. Use `human:alice`, not `alice`.
-- **`status` absent means `stable`** — only set `status` for `draft` or `deprecated`.
-- **Attested Computations are standalone** — do not embed computations in other types. Make the computation its own document and link to it.
-- **`index.md` has no frontmatter** — except bundle root, where `okf_version: "0.2"` is permitted.
-- **Bundles are consumed without source files** — `sources` records provenance, but the original PDF, XLSX, or URL need not be present.
+- **Actor convention keys off `human:` prefix** — trust tiers derive from `human:<id>` in `verified`.
+- **`status` absent means `stable`** — only set for `draft` or `deprecated`.
+- **Attested Computations are standalone** — do not embed in other types; make its own document and link.
+- **`index.md` has no frontmatter** — except bundle root may carry `okf_version: "0.2"`.
+- **Bundles are consumed without source files** — `sources` records provenance, originals need not be present.
