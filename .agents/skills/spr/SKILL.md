@@ -2,6 +2,9 @@
 name: spr
 description: Compress text into Sparse Priming Representations (SPR) or decompress SPRs back to full text. Supports PDF/Office input via markdown conversion. Use when the user wants to compress content into SPR format, decompress/expand SPRs, or needs token-efficient knowledge representations for LLM context.
 metadata:
+  author: https://github.com/daveshap
+  repo: https://github.com/daveshap/SparsePrimingRepresentations
+  license: MIT
   tags:
     - meta
     - knowledge
