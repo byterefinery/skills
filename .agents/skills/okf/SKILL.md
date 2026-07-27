@@ -26,6 +26,90 @@ Core concepts:
 - **Lifecycle** — `status` and `stale_after` frontmatter tracking currency
 - **Attested Computation** — a concept type carrying a sanctioned computation a consumer can verify
 
+## Usage
+
+`okf.sh` provides deterministic CLI operations for creating, reading, validating, and maintaining OKF bundles. All operations use stdlib-only Python — no external dependencies.
+
+```bash
+# Scaffold a new concept
+okf.sh create reports/q3-sales --type Document --title "Q3 Sales Report" \
+  --description "Quarterly sales summary" --tags "sales,quarterly" \
+  --bundle ./bundle
+
+# Read a concept (full doc, frontmatter only, body only, or JSON)
+okf.sh read reports/q3-sales --bundle ./bundle
+okf.sh read reports/q3-sales --format frontmatter --bundle ./bundle
+okf.sh read reports/q3-sales --format json --bundle ./bundle
+
+# Write/update a concept with frontmatter and body
+okf.sh write reports/q3-sales \
+  --frontmatter 'type: Document
+title: Q3 Sales Report
+description: Quarterly sales summary
+tags: [sales, quarterly]
+resource: https://docs.acme.com/reports/q3.pdf
+sources:
+  - id: q3-pdf
+    resource: https://docs.acme.com/reports/q3.pdf
+    title: Q3 Sales PDF' \
+  --body '# Summary
+
+Revenue grew 12% year-over-year.' \
+  --bundle ./bundle
+
+# List all concepts in a bundle
+okf.sh list --bundle ./bundle
+okf.sh list --json --bundle ./bundle
+
+# Fetch a single URL as markdown, HTML, links, or JSON
+okf.sh fetch "https://docs.example.com/api" --format md
+okf.sh fetch "https://docs.example.com/api" --format links
+okf.sh fetch "https://docs.example.com/api" --format json --output page.json
+
+# Crawl seed URLs, follow relevant links, extract content
+okf.sh crawl "https://docs.example.com" "https://docs.example.com/reference" \
+  --max-pages 15 --allowed-hosts "docs.example.com" \
+  --format summary
+
+# Crawl and write as OKF concepts into a bundle
+okf.sh crawl "https://docs.example.com/guide" \
+  --max-pages 10 --output references --bundle ./bundle
+
+# Validate bundle conformance
+okf.sh validate --bundle ./bundle
+okf.sh validate --strict --bundle ./bundle
+okf.sh validate --json --bundle ./bundle
+
+# Generate index.md for progressive disclosure
+okf.sh index --bundle ./bundle
+okf.sh index --dir ./bundle/reports --bundle ./bundle --force
+
+# Show concept info
+okf.sh info reports/q3-sales --bundle ./bundle
+okf.sh info reports/q3-sales --json --bundle ./bundle
+
+# Append to log.md
+okf.sh log --add "Update: Added Q3 sales report" --bundle ./bundle
+okf.sh log --bundle ./bundle
+```
+
+### Subcommand Reference
+
+| Command | Purpose |
+|---|---|
+| `create <id>` | Scaffold a new concept with frontmatter template |
+| `read <id>` | Read existing concept (full/frontmatter/body/json) |
+| `write <id>` | Write or update a concept with frontmatter + body |
+| `list` | List all concepts in a bundle |
+| `fetch <url>` | Fetch a URL as markdown, HTML, links, or JSON |
+| `crawl <urls>` | Crawl seed URLs, follow links, extract content |
+| `validate` | Check bundle conformance (errors + warnings) |
+| `index` | Generate index.md for a directory |
+| `info <id>` | Show detailed concept metadata |
+| `log` | View or append to log.md |
+
+All subcommands accept `--bundle` / `-b` to set the bundle root directory. When omitted, the current working directory is used.
+
 ## Bundle Structure
 
 ```
