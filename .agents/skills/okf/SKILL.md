@@ -79,7 +79,34 @@ Use file-relative paths (not absolute `/` paths) for links between concepts:
 - Parent: `[reports](../reports/overview.md)`
 - Reference: `[glossary](../references/glossary.md)`
 
-## Usage
+## Content Fidelity
+
+When ingesting source material into OKF concept documents, the agent controls how much content to preserve. Three levels:
+
+| Level | What to Keep | What to Drop |
+|-------|-------------|-------------|
+| **high** (default) | Everything — all text, tables, code, lists, examples, numbers | Nothing |
+| **medium** | All headings, tables, code blocks, numbers, financial data, lists. Summarized prose. | Nav menus, footers, disclaimers, "read more" links, breadcrumbs, TOC sections |
+| **low** | All `#` headings, tables, code blocks, financial data, key terms, standalone numbers | Examples, verbose explanations, secondary details, extra list items (keep 3 + "... and N more") |
+
+### Rules
+
+**Always preserve** (all levels):
+- All headings (document structure)
+- All tables and code blocks (verbatim)
+- All financial data: currency amounts (`$1.2M`), financial percentages (`revenue grew 15%`), tabular financials, fiscal periods (`FY2024`)
+- All numbers that carry standalone meaning (totals, counts, prices, metrics)
+
+**Medium level** — additionally:
+- Summarize verbose prose to key sentences (keep sentences with numbers, claims, conclusions)
+- Remove boilerplate: navigation, footers, cookie/legal notices, breadcrumbs, table-of-contents
+
+**Low level** — additionally:
+- Summarize each section to one sentence capturing its core point
+- Remove examples and verbose explanations
+- Compact long lists to 3 representative items + "... and N more"
+
+**When in doubt, preserve the data.** Dropping important information is worse than keeping extra tokens.
 
 ### Create a Bundle
 
@@ -187,19 +214,16 @@ okf.sh tokens --bundle ./bundle --verbose
    ```bash
    okf.sh create-bundle ./bundle --version 0.2
    ```
-3. Write the concept, piping the converted body:
+3. Read the converted markdown, apply fidelity rules (high = keep everything; medium = summarize prose, keep data; low = outline + key facts), then write the concept:
    ```bash
-   markdown.sh to-md annual-report.pdf | okf.sh write documents/annual-report \
+   # Agent reads ./tmp/annual-report.md
+   # Agent applies fidelity rules, composes concept body
+   # Agent writes the result
+   okf.sh write documents/annual-report \
      --bundle ./bundle \
-     --frontmatter "type: Document
-title: Annual Report 2024
-description: Financial and operational results.
-tags: [finance]
-sources:
-  - id: source-pdf
-    resource: annual-report.pdf
-    title: Annual Report 2024" \
-     --body-stdin
+     --type Document \
+     --title "Annual Report 2024" \
+     --description "Financial and operational results."
    ```
 4. Validate:
    ```bash
@@ -209,20 +233,14 @@ sources:
 ### Processing a URL
 
 1. Fetch the page as markdown using `webfetch`
-2. Write the concept, piping the fetched content:
+2. Agent reads the fetched content, applies fidelity rules (medium is good for web pages — strips nav/boilerplate)
+3. Agent composes the concept and writes it:
    ```bash
-   # webfetch outputs markdown to stdout, pipe it:
    okf.sh write documents/api-guide \
      --bundle ./bundle \
-     --frontmatter "type: Document
-title: API Guide
-description: Official API usage guide.
-resource: https://docs.example.com/api-guide
-sources:
-  - id: api-docs
-    resource: https://docs.example.com/api-guide
-    title: API Guide" \
-     --body-stdin
+     --type Document \
+     --title "API Guide" \
+     --resource "https://docs.example.com/api-guide"
    ```
 
 ### Enriching an Existing Concept
@@ -267,6 +285,9 @@ When updating an existing concept:
 - **Trust tiers are derived, not stored** — `unverified` (no `verified`), `machine-confirmed` (non-`human:` actors only), `human-reviewed` (has `human:` actor). The tool does not compute tiers; this is for the consuming agent.
 - **Actor convention** — use `<producer>/<version>` for tools, `human:<id>` for people, `process:<id>` for automated processes. Trust tier derivation keys off the `human:` prefix.
 - **Document conversion is not this skill's job** — use `markdown.sh to-md` for PDF/Office files, `webfetch` for URLs. This skill only manages the resulting OKF bundle.
+- **Fidelity defaults to `high`** — the agent preserves all content unless instructed otherwise. Financial data, tables, and numbers are never lost.
+- **Fidelity is the agent's job** — the agent decides how much to summarize/filter when composing concept documents.
+- **Financial data is always protected** — regardless of fidelity level, currency amounts, financial percentages, and tabular financial data are never summarized or dropped. When in doubt, preserve the data.
 
 ## References
 
