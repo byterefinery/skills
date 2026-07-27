@@ -1,6 +1,6 @@
 ---
 name: okf
-description: Creates, validates, and manages Open Knowledge Format (OKF) bundles — directory trees of markdown concept documents with YAML frontmatter. Use when the user needs to create a knowledge bundle from PDF, Office, or web sources; write or update concept documents; validate OKF conformance; generate index files; or manage cross-links between concepts. Relies on `webfetch`, `websearch`, and `markdown` skills for document preparation.
+description: Creates, validates, and manages Open Knowledge Format (OKF v0.2) bundles — directory trees of markdown concept documents with YAML frontmatter. Use when the user needs to create a knowledge bundle from PDF, Office, or web sources; write or update concept documents; ingest markdown into multiple linked concepts; validate OKF conformance; generate index files; or manage cross-links between concepts. Relies on `markdown` skill for PDF/Office conversion, `webfetch` for URL fetching, and `websearch` for online searches. OKF documents are linked together so agents can traverse and analyze content without the original source files ever being present again.
 license: Apache-2.0
 compatibility: Requires Python 3.9+
 allowed-tools: Bash(okf.sh:*) Read Write
@@ -14,15 +14,21 @@ metadata:
 
 # okf
 
-Open Knowledge Format (OKF v0.2) bundle management. OKF represents knowledge as a directory of markdown files with YAML frontmatter — readable by humans, parseable by agents, diffable in version control, portable across tools.
+Open Knowledge Format (OKF v0.2) bundle management. OKF represents knowledge as a directory of markdown files with YAML frontmatter — readable by humans, parseable by agents, diffable in version control, portable across tools and organizations.
 
 ## Overview
 
-An OKF bundle is a directory tree of `.md` files. Each non-reserved file is a *concept* — a unit of knowledge with YAML frontmatter (type, title, description, sources, provenance, trust, lifecycle) and a markdown body. Reserved filenames (`index.md`, `log.md`) have special meaning.
+An OKF bundle is a directory tree of `.md` files. Each non-reserved file is a *concept* — a unit of knowledge with YAML frontmatter (`type`, `title`, `description`, `sources`, provenance, trust, lifecycle) and a markdown body. Reserved filenames (`index.md`, `log.md`) have special meaning.
 
-The `okf.sh` script implements the document I/O functions referenced by OKF agent prompts (`list_concepts`, `read_existing_doc`, `write_concept_doc`) plus utilities for validation, index generation, and link extraction.
+The `okf.sh` script implements the document I/O functions referenced by OKF agent prompts (`list-concepts`, `read-doc`, `write-doc`) plus utilities for validation, index generation, link extraction, token estimation, and multi-concept ingestion.
 
-Document preparation is handled by other skills: `markdown` converts PDF/Office files to markdown, `webfetch` fetches URLs as markdown, `websearch` finds relevant pages. This skill operates on already-prepared markdown content.
+**Document preparation is handled by other skills:** `markdown` converts PDF/Office files to markdown, `webfetch` fetches URLs as markdown, `websearch` finds relevant pages. This skill operates on already-prepared markdown content.
+
+### Design principle: comprehensive coverage
+
+OKF bundles are designed to be usable **without the original source files ever being present again**. When producing content inside a bundle, cover **every aspect** from input files — all tables, numbers, financial data, definitions, procedures, examples, code blocks, lists, and structured content. Do not cover only high-level information. The OKF markdown documents are linked together, allowing agent harnesses to traverse and analyze the full content graph.
+
+It is up to the **LLM** to summarize, format, and transform content. It is up to the **script** to organize the deterministic structure of YAML frontmatter.
 
 ## Bundle Structure
 
@@ -73,23 +79,41 @@ stale_after: 2025-12-31
 
 ### Cross-linking
 
-Use file-relative paths (not absolute `/` paths) for links between concepts:
+Use file-relative paths only — never absolute `/` paths (those break GitHub rendering). The link must resolve from the linking document's directory:
 
 - Sibling: `[budget](budget.md)`
 - Parent: `[reports](../reports/overview.md)`
 - Reference: `[glossary](../references/glossary.md)`
 
-## Content Fidelity
+Only link to concept IDs returned by `okf.sh list-concepts`. One link per concept mention per section. Do not link from headers, fenced code blocks, or schema field names. Do not link a doc to itself.
 
-When ingesting source material into OKF concept documents, the agent controls how much content to preserve. Three levels:
+## Content Processing
+
+When ingesting source material into OKF concept documents, the LLM intelligently parses input markdown and produces clean, well-structured output. The process is lossy — meaning is preserved, verbatim copy is not required — but the result must be able to recreate the original semantically if needed.
+
+### Page-aware processing
+
+Source markdown from PDFs or scanned documents often carries page artifacts:
+- Page numbers (`Page 3 of 15`, `— 4 —`, `| 7 |`)
+- Page headers/footers repeated on every page
+- Content split mid-sentence or mid-table across page boundaries
+- Column layouts flattened into linear text
+
+The LLM must:
+- **Strip page indicators** — remove page numbers, repeated headers, footers, watermarks
+- **Merge split content** — when a paragraph, table, or list spans pages, flow it into continuous text
+- **Group coherent content** — find related sections that belong together, even across page breaks
+- **Preserve structure** — headings, tables, code blocks, lists, and numbers carry the meaning
+
+### Fidelity levels
+
+The agent controls how much content to preserve. Three levels:
 
 | Level | What to Keep | What to Drop |
 |-------|-------------|-------------|
 | **high** (default) | Everything — all text, tables, code, lists, examples, numbers | Nothing |
 | **medium** | All headings, tables, code blocks, numbers, financial data, lists. Summarized prose. | Nav menus, footers, disclaimers, "read more" links, breadcrumbs, TOC sections |
 | **low** | All `#` headings, tables, code blocks, financial data, key terms, standalone numbers | Examples, verbose explanations, secondary details, extra list items (keep 3 + "... and N more") |
-
-### Rules
 
 **Always preserve** (all levels):
 - All headings (document structure)
@@ -108,154 +132,86 @@ When ingesting source material into OKF concept documents, the agent controls ho
 
 **When in doubt, preserve the data.** Dropping important information is worse than keeping extra tokens.
 
-### Create a Bundle
+### Output quality
+
+Every OKF document must be:
+- **Non-empty body** — every concept must have body content after frontmatter. A concept with frontmatter but no body is useless. If you cannot produce meaningful body content, do not create the concept.
+- **Same language as input** — the body text and concept filenames must use the same language as the source material. If input is German, write German body text and use German heading text for filenames (slugged). If input is Japanese, same rule. Never translate; never mix languages. This keeps the bundle consistent and intuitive for the end-user.
+- **Valid markdown** — correct syntax for headings, lists, tables, code blocks, links, footnotes
+- **Concise** — no filler, no preamble, no reasoning narration in the body
+- **Clean** — no page artifacts, no repeated headers, no boilerplate
+- **Well-structured** — logical heading hierarchy, consistent formatting, readable flow
+- **Right-sized** — not too long (split into multiple concepts if needed), not too short (merge related content). Use `ingest` for large documents; use `write-doc` for focused concepts.
+
+## CLI Reference
+
+`--bundle` is always the first argument. `--body -` reads from stdin.
 
 ```bash
-okf.sh create-bundle ./my-bundle --version 0.2 --name "Project Knowledge"
-```
-
-### List Concepts
-
-```bash
-okf.sh list ./bundle
-okf.sh list ./bundle --json
-```
-
-### Read a Concept
-
-```bash
-okf.sh read documents/annual-report-2024 --bundle ./bundle
-okf.sh read documents/annual-report-2024 --bundle ./bundle --frontmatter
-okf.sh read documents/annual-report-2024 --bundle ./bundle --body
-okf.sh read documents/annual-report-2024 --bundle ./bundle --json
-```
-
-### Write a Concept
-
-```bash
-# Body from stdin via --body -
-cat ./annual-report-2024.md | okf.sh write documents/annual-report-2024 \
-  --bundle ./bundle \
-  --frontmatter "type: Document
-title: Annual Report 2024
-description: Q1-Q4 financial and operational results.
-tags: [finance, annual-report]" \
-  --body - \
- 
-
-# Piped from markdown.sh
-markdown.sh to-md report.pdf | okf.sh write documents/report \
-  --bundle ./bundle \
-  --type Document \
-  --body-stdin \
- 
-
-# Frontmatter from file, body from stdin
-okf.sh write documents/product-spec \
-  --bundle ./bundle \
-  --frontmatter-file fm.yaml \
-  --body - < body.md
-
-# Frontmatter from JSON, body from stdin
-okf.sh write documents/product-spec \
-  --bundle ./bundle \
-  --frontmatter '{"type":"Document","title":"Product Spec"}' \
-  --json-fm \
-  --body - < body.md
-
-# Dry run (print without writing)
-okf.sh write documents/whitepaper --bundle ./bundle --type "Document" --dry-run
-```
-
-### Validate
-
-```bash
-# Validate entire bundle
-okf.sh validate ./bundle
-okf.sh validate ./bundle --verbose
-
-# Validate single file
-okf.sh validate --file ./bundle/documents/annual-report-2024.md
-```
-
-### Generate Index
-
-```bash
-# Print to stdout
-okf.sh index --bundle ./bundle
-
-# Write to file
+okf.sh create-bundle --bundle ./bundle --version 0.2
+okf.sh list-concepts --bundle ./bundle
+okf.sh read-doc --bundle ./bundle --concept documents/report --json
+okf.sh write-doc --bundle ./bundle --concept documents/report --type Document --body -
+okf.sh ingest --bundle ./bundle --file ./large-doc.md --type Document --output-dir documents
+okf.sh validate --bundle ./bundle
 okf.sh index --bundle ./bundle --output ./bundle/index.md
-```
-
-### Extract Links
-
-```bash
-okf.sh extract-links --file ./bundle/documents/annual-report-2024.md
-okf.sh extract-links --file ./bundle/documents/annual-report-2024.md --json
-```
-
-### Estimate Tokens
-
-```bash
-okf.sh tokens --file ./bundle/documents/annual-report-2024.md
 okf.sh tokens --bundle ./bundle --verbose
 ```
+
+Full CLI reference with all options and piping examples: [04-cli-reference](references/04-cli-reference.md).
 
 ## Typical Workflow
 
 ### Processing a PDF or Office Document
 
-1. Convert the source file to markdown using `markdown.sh to-md`:
+1. Convert source to markdown: `markdown.sh to-md report.pdf -o ./tmp/report.md`
+2. Create bundle: `okf.sh create-bundle --bundle ./bundle --version 0.2`
+3. Read the markdown, apply fidelity rules, strip page artifacts, compose clean concept body
+4. Write the concept or use `ingest` for large documents:
    ```bash
-   markdown.sh to-md annual-report.pdf -o ./tmp/annual-report.md
+   cat ./tmp/report.md | okf.sh ingest --bundle ./bundle --body - --type Document --output-dir documents
    ```
-2. Create the bundle:
-   ```bash
-   okf.sh create-bundle ./bundle --version 0.2
-   ```
-3. Read the converted markdown, apply fidelity rules (high = keep everything; medium = summarize prose, keep data; low = outline + key facts), then write the concept:
-   ```bash
-   # Agent reads ./tmp/annual-report.md
-   # Agent applies fidelity rules, composes concept body
-   # Agent writes the result
-   okf.sh write documents/annual-report \
-     --bundle ./bundle \
-     --type Document \
-     --title "Annual Report 2024" \
-     --description "Financial and operational results."
-   ```
-4. Validate:
-   ```bash
-   okf.sh validate ./bundle
-   ```
+5. Validate: `okf.sh validate --bundle ./bundle`
 
 ### Processing a URL
 
 1. Fetch the page as markdown using `webfetch`
-2. Agent reads the fetched content, applies fidelity rules (medium is good for web pages — strips nav/boilerplate)
-3. Agent composes the concept and writes it:
-   ```bash
-   okf.sh write documents/api-guide \
-     --bundle ./bundle \
-     --type Document \
-     --title "API Guide" \
-     --resource "https://docs.example.com/api-guide"
-   ```
+2. Agent reads content, applies fidelity rules (medium strips nav/boilerplate), composes concept
+3. Write: `okf.sh write-doc --bundle ./bundle --concept documents/page --type Document --resource "https://example.com/page"`
+
+### Piping from webfetch and websearch
+
+```bash
+webfetch.sh fetch https://example.com | okf.sh ingest --bundle ./bundle --body - --type Document --output-dir documents --resource "https://example.com"
+websearch.sh "query" | okf.sh write-doc --bundle ./bundle --concept references/search --type Reference --body -
+```
+
+Full piping examples: [04-cli-reference](references/04-cli-reference.md).
+
+### Log files
+
+`log.md` records chronological change history. Flat list of date-grouped entries, newest first:
+
+```markdown
+# Directory Update Log
+
+## 2025-07-27
+* **Update**: Added [Annual Report 2024](documents/annual-report-2024.md) from PDF source.
+* **Creation**: Established bundle structure for project knowledge.
+
+## 2025-07-20
+* **Initialization**: Created bundle with `okf.sh create-bundle`.
+```
+
+Date headings MUST use ISO 8601 `YYYY-MM-DD` form. Leading bold words (`**Update**`, `**Creation**`, `**Deprecation**`) are convention, not requirement.
 
 ### Enriching an Existing Concept
 
-1. Read the existing document:
-   ```bash
-   okf.sh read documents/annual-report --bundle ./bundle --json
-   ```
+1. Read: `okf.sh read-doc --bundle ./bundle --concept documents/report --json`
 2. Merge new content into the body, preserving all existing headings
 3. Update with merged frontmatter (union of existing + new sources/tags):
    ```bash
-   cat ./merged-body.md | okf.sh write documents/annual-report \
-     --bundle ./bundle \
-     --frontmatter-file ./merged-fm.yaml \
-     --body-stdin
+   cat ./merged-body.md | okf.sh write-doc --bundle ./bundle --concept documents/report --frontmatter-file ./merged-fm.yaml --body -
    ```
 
 ### Augmentation Rules
@@ -265,32 +221,59 @@ When updating an existing concept:
 - **Body**: every existing `#` heading must appear in the new body, same order, same wording. Extend prose, add bullets, add new headings *after* existing ones. Never drop or rename existing headings.
 - If you cannot honor these rules, mint a `references/<slug>` doc instead and cross-link from the primary doc.
 
-### Cross-linking Rules
+### Sources and per-claim attribution
 
-- Use file-relative paths only. Never start with `/`.
-- Only link to IDs returned by `okf.sh list`.
-- One link per concept mention per section.
+Record materials a concept derives from in the `sources` frontmatter list. Each entry needs `resource` (required), a stable `id`, and a human-readable `title`. Include the concept's own `resource` as a sources entry when applicable. Do not invent URLs.
+
+To attribute a specific claim in the body, use a markdown footnote whose label matches a `sources[].id`:
+
+```markdown
+Revenue grew 15% year-over-year.[^annual-report]
+
+[^annual-report]: Annual Report 2024
+```
+
+The footnote label is the join key into `sources`; consumers resolve attribution through the matching entry. Labels are keyed (not positional) because agents constantly rewrite documents — a stable `id` survives reordering.
+
+### Cross-linking rules
+
+- Use file-relative paths only. Never start with `/` (breaks GitHub rendering).
+- Only link to IDs returned by `okf.sh list-concepts`.
+- One link per concept mention per section. Do not over-link.
 - Do not link from headers, fenced code blocks, or schema field names.
 - Do not link a doc to itself.
 
 ## Gotchas
 
 - **`type` is the only required frontmatter field** — a concept with just `type` is conformant. All other fields are optional. Their absence carries meaning (unverified ≠ rejected).
+- **Body must never be empty** — every concept needs body content. Frontmatter alone is not enough. If you cannot produce meaningful body content, do not create the concept.
+- **Language follows input** — body text and concept filenames must use the same language as the source material. Never translate. If input is in German, body is in German and filenames derive from German headings. This keeps the bundle consistent and intuitive for the end-user.
 - **`generated` is auto-filled** — leave it unset in your frontmatter and the tool records actor and timestamp. Only override if you need a specific value.
 - **`sources` must not shrink** — when augmenting, always include existing sources plus new ones. The validator catches missing entries.
 - **Cross-links use relative paths** — `[budget](budget.md)`, not `[budget](/documents/budget.md)`. Absolute paths break GitHub rendering.
+- **Footnote labels must match `sources[].id`** — the label `[^my-source]` must correspond to a `sources` entry with `id: my-source`. Consumers resolve attribution through the matching entry, not the footnote prose.
 - **Reference files need numeric prefixes for ordering** — use `01-topic.md`, `02-topic.md` etc. when a references directory has many files.
 - **`index.md` and `log.md` are reserved** — they cannot be used as concept document names. The tool skips them in `list` output.
+- **`log.md` uses date-grouped entries** — newest first, ISO 8601 `YYYY-MM-DD` date headings. See the log files section above for format.
 - **YAML frontmatter is parsed with a stdlib-only subset parser** — it handles mappings, lists, inline `{maps}` and `[lists]`, quoted strings, and scalars. It does NOT handle multi-line strings (`|`, `>`), anchors (`&`, `*`), or tags beyond `!!str`/`!!float`/`!!int`/`!!bool`.
 - **Trust tiers are derived, not stored** — `unverified` (no `verified`), `machine-confirmed` (non-`human:` actors only), `human-reviewed` (has `human:` actor). The tool does not compute tiers; this is for the consuming agent.
 - **Actor convention** — use `<producer>/<version>` for tools, `human:<id>` for people, `process:<id>` for automated processes. Trust tier derivation keys off the `human:` prefix.
 - **Document conversion is not this skill's job** — use `markdown.sh to-md` for PDF/Office files, `webfetch` for URLs. This skill only manages the resulting OKF bundle.
+- **Page artifacts must be stripped** — page numbers, repeated headers/footers, watermarks from PDF conversion. The LLM merges split content across page boundaries into continuous, coherent text.
+- **Content is split intelligently, not copied verbatim** — OKF is a lossy process that preserves meaning. The LLM groups coherent content, strips artifacts, and produces clean structured markdown. The result must recreate the original semantically if needed.
+- **Documents should be right-sized** — not too long (split via `ingest` or multiple `write-doc` calls), not too short (merge related sections). A concept should cover one coherent topic.
+- **Always produce valid markdown** — correct heading hierarchy, proper list syntax, well-formed tables, fenced code blocks with language hints, working links and footnotes.
 - **Fidelity defaults to `high`** — the agent preserves all content unless instructed otherwise. Financial data, tables, and numbers are never lost.
 - **Fidelity is the agent's job** — the agent decides how much to summarize/filter when composing concept documents.
 - **Financial data is always protected** — regardless of fidelity level, currency amounts, financial percentages, and tabular financial data are never summarized or dropped. When in doubt, preserve the data.
+- **`--bundle` is always first argument** — every subcommand takes `--bundle` before other options.
+- **`--body -` reads from stdin** — use `-` as the body value to pipe content. Works with `write-doc` and `ingest`.
+- **`ingest` splits at H1 headings** — each `# Heading` becomes a separate concept. H2/H3 headings stay within their parent concept.
+- **Comprehensive coverage is the default** — OKF bundles must be usable without original sources. Cover every aspect: all tables, numbers, definitions, procedures, examples, code blocks, lists, and structured content.
 
 ## References
 
 - [01-okf-spec](references/01-okf-spec.md) — OKF v0.2 specification summary
 - [02-reference-agent](references/02-reference-agent.md) — Reference agent prompt and workflow details
 - [03-web-ingestion](references/03-web-ingestion.md) — Web ingestion agent prompt and workflow details
+- [04-cli-reference](references/04-cli-reference.md) — Full CLI reference with all options and piping examples

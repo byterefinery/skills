@@ -2,22 +2,25 @@
 
 Implements the functions referenced by OKF reference_agent and web_ingestion_agent
 prompts: list_concepts, read_existing_doc, write_concept_doc, plus utilities for
-validation, index generation, and link extraction.
+validation, index generation, link extraction, token estimation, and multi-concept
+ingestion.
 
 Document I/O only — fetching URLs, searching the web, and converting PDF/Office
 files to markdown are handled by other skills (webfetch, websearch, markdown).
 
 Usage:
-    okf.sh <command> [options]
+    okf.sh <command> --bundle <path> [options]
 
 Commands:
-    list        List all concepts in a bundle
-    read        Read an existing concept document
-    write       Write or update a concept document
-    extract-links  Extract cross-links from a markdown document
-    validate    Validate a bundle or single concept for OKF conformance
-    index       Generate or update an index.md file
-    tokens      Estimate token count of a document or bundle
+    create-bundle   Create a new empty bundle directory
+    list-concepts   List all concepts in a bundle
+    read-doc        Read an existing concept document
+    write-doc       Write or update a concept document
+    ingest          Ingest markdown, split into multiple concepts
+    extract-links   Extract cross-links from a markdown document
+    validate        Validate a bundle or single concept for OKF conformance
+    index           Generate or update an index.md file
+    tokens          Estimate token count of a document or bundle
 """
 
 import argparse
@@ -28,6 +31,7 @@ import re
 import signal
 import sys
 import textwrap
+import unicodedata
 from pathlib import Path
 
 # Ignore SIGPIPE — handles `cmd | head -N` gracefully
@@ -353,6 +357,28 @@ def build_document(fm, body):
 
 
 # ---------------------------------------------------------------------------
+# Slug generation
+# ---------------------------------------------------------------------------
+
+def to_slug(text, max_len=64):
+    """Convert text to a URL-safe slug (lowercase, hyphenated)."""
+    # Normalize unicode
+    text = unicodedata.normalize('NFKD', text)
+    # Lowercase
+    text = text.lower()
+    # Replace non-alphanumeric with hyphens
+    text = re.sub(r'[^a-z0-9\u00c0-\u024f-]', '-', text)
+    # Collapse multiple hyphens
+    text = re.sub(r'-+', '-', text)
+    # Strip leading/trailing hyphens
+    text = text.strip('-')
+    # Truncate
+    if len(text) > max_len:
+        text = text[:max_len].rstrip('-')
+    return text
+
+
+# ---------------------------------------------------------------------------
 # Bundle operations
 # ---------------------------------------------------------------------------
 
@@ -439,6 +465,198 @@ def write_concept_doc(concept_id, frontmatter, body, bundle_path, dry_run=False)
         return None
     doc_path.write_text(doc_text, encoding='utf-8')
     return str(doc_path.relative_to(bundle))
+
+
+# ---------------------------------------------------------------------------
+# Multi-concept ingestion
+# ---------------------------------------------------------------------------
+
+def split_at_h1(body):
+    """Split markdown body at H1 headings (# ...).
+
+    Returns list of (heading_text, section_body) tuples.
+    If no H1 headings, returns single tuple with empty heading.
+    """
+    sections = []
+    lines = body.split('\n')
+    current_heading = None
+    current_lines = []
+    in_fence = False
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('```'):
+            in_fence = not in_fence
+            current_lines.append(line)
+            continue
+        if in_fence:
+            current_lines.append(line)
+            continue
+
+        m = re.match(r'^#\s+(.+)$', line)
+        if m:
+            # Save previous section
+            if current_heading is not None:
+                sections.append((current_heading, '\n'.join(current_lines)))
+            current_heading = m.group(1).strip()
+            current_lines = []
+        else:
+            current_lines.append(line)
+
+    # Save last section
+    if current_heading is not None:
+        sections.append((current_heading, '\n'.join(current_lines)))
+    elif current_lines:
+        sections.append(('untitled', '\n'.join(current_lines)))
+
+    return sections
+
+
+def extract_description(body, max_chars=200):
+    """Extract a one-line description from body text.
+
+    Takes the first meaningful sentence or first line of prose.
+    """
+    # Remove frontmatter if present
+    fm, clean_body = parse_frontmatter(body)
+    text = clean_body if clean_body else body
+
+    # Strip headings
+    text = re.sub(r'^#+\s+.+$', '', text, flags=re.MULTILINE)
+    # Strip code blocks
+    text = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
+    # Strip horizontal rules
+    text = re.sub(r'^---+$', '', text, flags=re.MULTILINE)
+
+    # Get first meaningful line
+    for line in text.split('\n'):
+        line = line.strip()
+        if line and not line.startswith(('```', '#', '-', '*', '[', '---')):
+            # Truncate to max_chars
+            if len(line) > max_chars:
+                line = line[:max_chars].rsplit(' ', 1)[0] + '...'
+            return line
+    return ''
+
+
+def ingest_markdown(text, bundle_path, concept_type='Document', output_dir='documents',
+                    source_id=None, source_resource=None, source_title=None, dry_run=False):
+    """Ingest markdown text, split at H1 headings, write as multiple concepts.
+
+    Returns list of concept IDs written.
+    """
+    # Strip existing frontmatter
+    fm, body = parse_frontmatter(text)
+
+    # Split at H1 headings
+    sections = split_at_h1(body)
+
+    if not sections:
+        print("Warning: no content to ingest", file=sys.stderr)
+        return []
+
+    bundle = Path(bundle_path).resolve()
+    bundle.mkdir(parents=True, exist_ok=True)
+    output_dir_path = bundle / output_dir
+    output_dir_path.mkdir(parents=True, exist_ok=True)
+
+    written = []
+    all_concepts = []
+    slug_counts = {}  # Track slug occurrences for deduplication
+
+    for heading_text, section_body in sections:
+        # Generate concept ID with deduplication
+        slug = to_slug(heading_text)
+        if not slug:
+            slug = 'untitled'
+        slug_counts[slug] = slug_counts.get(slug, 0) + 1
+        if slug_counts[slug] > 1:
+            slug = f"{slug}-{slug_counts[slug]}"
+        concept_id = f"{output_dir}/{slug}"
+
+        # Clean up section body
+        section_body = section_body.strip()
+        if not section_body:
+            continue
+
+        # Extract description
+        description = extract_description(section_body)
+
+        # Build frontmatter
+        concept_fm = {
+            'type': concept_type,
+            'title': heading_text,
+        }
+        if description:
+            concept_fm['description'] = description
+        if source_resource:
+            concept_fm['resource'] = source_resource
+
+        # Build sources
+        sources = []
+        if source_resource:
+            src = {'id': source_id or to_slug(source_resource), 'resource': source_resource}
+            if source_title:
+                src['title'] = source_title
+            sources.append(src)
+        if sources:
+            concept_fm['sources'] = sources
+
+        # Add cross-links to siblings
+        all_concepts.append((concept_id, heading_text))
+
+    # Now write all concepts with cross-links
+    for concept_id, heading_text in all_concepts:
+        # Find the section body for this concept
+        section_body = ''
+        for h, b in sections:
+            if to_slug(h) == to_slug(heading_text):
+                section_body = b.strip()
+                break
+
+        if not section_body:
+            continue
+
+        description = extract_description(section_body)
+
+        concept_fm = {
+            'type': concept_type,
+            'title': heading_text,
+        }
+        if description:
+            concept_fm['description'] = description
+        if source_resource:
+            concept_fm['resource'] = source_resource
+
+        sources = []
+        if source_resource:
+            src = {'id': source_id or to_slug(source_resource), 'resource': source_resource}
+            if source_title:
+                src['title'] = source_title
+            sources.append(src)
+        if sources:
+            concept_fm['sources'] = sources
+
+        # Prepend H1 heading to body (validator expects it)
+        body_with_heading = f'# {heading_text}\n\n{section_body}' if section_body else f'# {heading_text}\n'
+
+        # Add cross-links section
+        siblings = [(cid, ht) for cid, ht in all_concepts if cid != concept_id]
+        if siblings:
+            cross_links = '\n\n# Related\n\n'
+            for sid, stitle in siblings:
+                # Compute relative path
+                rel = Path(sid).relative_to(Path(concept_id).parent)
+                cross_links += f'- [{stitle}]({rel}.md)\n'
+            body_with_heading = body_with_heading + cross_links
+
+        path = write_concept_doc(concept_id, concept_fm, body_with_heading, bundle_path, dry_run=dry_run)
+        if path:
+            written.append(concept_id)
+        elif dry_run:
+            written.append(concept_id)
+
+    return written
 
 
 # ---------------------------------------------------------------------------
@@ -587,7 +805,7 @@ def generate_index(bundle_path, output=None):
         if group == 'root':
             lines.append('# Concepts')
         else:
-            lines.append(f'# {group}')
+            lines.append(f'# {group.title().replace("-", " ")}')
         lines.append('')
         for c in groups[group]:
             title = c.get('title') or c['id'].split('/')[-1].replace('-', ' ').title()
@@ -623,7 +841,19 @@ def _print_json(data):
     print(json.dumps(data, indent=2, ensure_ascii=False, default=str))
 
 
-def cmd_list(args):
+def cmd_create_bundle(args):
+    bundle = Path(args.bundle).resolve()
+    bundle.mkdir(parents=True, exist_ok=True)
+    if args.version:
+        index = f'---\nokf_version: "{args.version}"\n---\n\n'
+        index += f'# {args.name or "OKF Bundle"}\n\n'
+        (bundle / 'index.md').write_text(index, encoding='utf-8')
+        print(f"Created bundle at {bundle} (OKF v{args.version})")
+    else:
+        print(f"Created bundle at {bundle}")
+
+
+def cmd_list_concepts(args):
     concepts = list_concepts(args.bundle)
     if args.json:
         _print_json(concepts)
@@ -638,10 +868,10 @@ def cmd_list(args):
         print(f"\n{len(concepts)} concept(s)")
 
 
-def cmd_read(args):
-    doc = read_existing_doc(args.concept_id, args.bundle)
+def cmd_read_doc(args):
+    doc = read_existing_doc(args.concept, args.bundle)
     if doc is None:
-        print(f"Error: concept '{args.concept_id}' not found", file=sys.stderr)
+        print(f"Error: concept '{args.concept}' not found", file=sys.stderr)
         sys.exit(1)
     if args.json:
         _print_json({'id': doc['id'], 'frontmatter': doc['frontmatter'], 'body': doc['body']})
@@ -653,7 +883,7 @@ def cmd_read(args):
         print(doc['raw'], end='')
 
 
-def cmd_write(args):
+def cmd_write_doc(args):
     fm = {}
     if args.frontmatter_file:
         with open(args.frontmatter_file) as f:
@@ -677,11 +907,47 @@ def cmd_write(args):
     if not fm.get('type'):
         print("Error: 'type' field is required in frontmatter", file=sys.stderr)
         sys.exit(1)
-    path = write_concept_doc(args.concept_id, fm, body, args.bundle, dry_run=args.dry_run)
+    path = write_concept_doc(args.concept, fm, body, args.bundle, dry_run=args.dry_run)
     if args.dry_run:
         pass
     else:
         print(f"Written: {path}")
+
+
+def cmd_ingest(args):
+    if args.file:
+        text = Path(args.file).read_text(encoding='utf-8')
+    elif args.body == '-':
+        text = sys.stdin.read()
+    elif args.body:
+        text = args.body
+    else:
+        text = sys.stdin.read()
+
+    source_id = args.source_id
+    source_resource = args.resource
+    source_title = args.title
+
+    written = ingest_markdown(
+        text,
+        bundle_path=args.bundle,
+        concept_type=args.type,
+        output_dir=args.output_dir,
+        source_id=source_id,
+        source_resource=source_resource,
+        source_title=source_title,
+        dry_run=args.dry_run,
+    )
+
+    if args.json:
+        _print_json({'written': written, 'count': len(written)})
+    else:
+        if not written:
+            print("No concepts written.")
+            return
+        for cid in written:
+            print(f"  {cid}")
+        print(f"\n{len(written)} concept(s) written")
 
 
 def cmd_extract_links(args):
@@ -709,7 +975,7 @@ def cmd_validate(args):
         for sev, msg in issues:
             tag = 'ERROR' if sev == 'error' else ('WARN' if sev == 'warn' else 'INFO')
             print(f"  [{tag}] {msg}")
-    else:
+    elif args.bundle:
         results = validate_bundle(args.bundle)
         total_errors = 0
         total_warns = 0
@@ -732,6 +998,9 @@ def cmd_validate(args):
         print(f"\n{len(results)} concept(s), {total_errors} error(s), {total_warns} warning(s)")
         if total_errors > 0:
             sys.exit(1)
+    else:
+        print("Error: specify --bundle or --file", file=sys.stderr)
+        sys.exit(1)
 
 
 def cmd_index(args):
@@ -764,18 +1033,6 @@ def cmd_tokens(args):
         print(f"~{count} tokens ({len(text)} chars)")
 
 
-def cmd_create_bundle(args):
-    bundle = Path(args.bundle).resolve()
-    bundle.mkdir(parents=True, exist_ok=True)
-    if args.version:
-        index = f'---\nokf_version: "{args.version}"\n---\n\n'
-        index += f'# {args.name or "OKF Bundle"}\n\n'
-        (bundle / 'index.md').write_text(index, encoding='utf-8')
-        print(f"Created bundle at {bundle} (OKF v{args.version})")
-    else:
-        print(f"Created bundle at {bundle}")
-
-
 def main():
     parser = argparse.ArgumentParser(
         prog='okf.sh',
@@ -783,36 +1040,42 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=textwrap.dedent("""
             Examples:
-              %(prog)s list ./bundle
-              %(prog)s read documents/report --bundle ./bundle
-              %(prog)s read documents/report --frontmatter --bundle ./bundle
-              %(prog)s write documents/report --type Document --body - --bundle ./bundle < body.md
-              cat body.md | %(prog)s write documents/report --type Document --body-stdin --bundle ./bundle
-              %(prog)s extract-links ./bundle/documents/report.md
-              %(prog)s validate ./bundle
+              %(prog)s create-bundle --bundle ./my-bundle --version 0.2
+              %(prog)s list-concepts --bundle ./bundle
+              %(prog)s read-doc --bundle ./bundle --concept documents/report
+              %(prog)s write-doc --bundle ./bundle --concept documents/report --type Document --body - < body.md
+              %(prog)s ingest --bundle ./bundle --file ./large-doc.md --type Document
+              %(prog)s extract-links --file ./bundle/documents/report.md
+              %(prog)s validate --bundle ./bundle
               %(prog)s index --bundle ./bundle --output ./bundle/index.md
               %(prog)s tokens --bundle ./bundle --verbose
         """),
     )
     sub = parser.add_subparsers(dest='command', help='Command to run')
 
-    # list
-    p_list = sub.add_parser('list', help='List all concepts in a bundle')
-    p_list.add_argument('bundle', help='Bundle directory path')
+    # create-bundle
+    p_cb = sub.add_parser('create-bundle', help='Create a new empty bundle directory')
+    p_cb.add_argument('--bundle', required=True, help='Bundle directory path')
+    p_cb.add_argument('--version', help='OKF version to declare (e.g. 0.2)')
+    p_cb.add_argument('--name', help='Bundle display name')
+
+    # list-concepts
+    p_list = sub.add_parser('list-concepts', help='List all concepts in a bundle')
+    p_list.add_argument('--bundle', required=True, help='Bundle directory path')
     p_list.add_argument('--json', action='store_true', help='Output as JSON')
 
-    # read
-    p_read = sub.add_parser('read', help='Read an existing concept document')
-    p_read.add_argument('concept_id', help='Concept ID (relative path without .md)')
+    # read-doc
+    p_read = sub.add_parser('read-doc', help='Read an existing concept document')
     p_read.add_argument('--bundle', required=True, help='Bundle directory path')
+    p_read.add_argument('--concept', required=True, help='Concept ID (relative path without .md)')
     p_read.add_argument('--json', action='store_true', help='Output as JSON')
     p_read.add_argument('--frontmatter', action='store_true', help='Output frontmatter only (YAML)')
     p_read.add_argument('--body', action='store_true', help='Output body only')
 
-    # write
-    p_write = sub.add_parser('write', help='Write or update a concept document')
-    p_write.add_argument('concept_id', help='Concept ID (relative path without .md)')
+    # write-doc
+    p_write = sub.add_parser('write-doc', help='Write or update a concept document')
     p_write.add_argument('--bundle', required=True, help='Bundle directory path')
+    p_write.add_argument('--concept', required=True, help='Concept ID (relative path without .md)')
     p_write.add_argument('--type', help='Concept type (required if not in frontmatter)')
     p_write.add_argument('--frontmatter', help='Frontmatter as YAML string')
     p_write.add_argument('--frontmatter-file', help='Frontmatter from YAML file')
@@ -821,6 +1084,19 @@ def main():
     p_write.add_argument('--body-stdin', action='store_true', help='Read body from stdin')
     p_write.add_argument('--dry-run', action='store_true', help='Print document without writing')
 
+    # ingest
+    p_ingest = sub.add_parser('ingest', help='Ingest markdown, split into multiple concepts')
+    p_ingest.add_argument('--bundle', required=True, help='Bundle directory path')
+    p_ingest.add_argument('--file', help='Input markdown file (or use --body -)')
+    p_ingest.add_argument('--body', help='Body as string, or "-" to read from stdin')
+    p_ingest.add_argument('--type', default='Document', help='Concept type (default: Document)')
+    p_ingest.add_argument('--output-dir', default='documents', help='Output directory within bundle (default: documents)')
+    p_ingest.add_argument('--resource', help='Source resource URI')
+    p_ingest.add_argument('--title', help='Source title')
+    p_ingest.add_argument('--source-id', help='Source ID for provenance')
+    p_ingest.add_argument('--dry-run', action='store_true', help='Print documents without writing')
+    p_ingest.add_argument('--json', action='store_true', help='Output as JSON')
+
     # extract-links
     p_links = sub.add_parser('extract-links', help='Extract cross-links from a document')
     p_links.add_argument('--file', help='File to extract links from (default: stdin)')
@@ -828,7 +1104,7 @@ def main():
 
     # validate
     p_val = sub.add_parser('validate', help='Validate bundle or single concept')
-    p_val.add_argument('bundle', nargs='?', help='Bundle directory path (omit if using --file)')
+    p_val.add_argument('--bundle', help='Bundle directory path')
     p_val.add_argument('--file', help='Single file to validate')
     p_val.add_argument('--verbose', '-v', action='store_true', help='Show all messages including OK')
 
@@ -843,26 +1119,21 @@ def main():
     p_tok.add_argument('--bundle', help='Bundle directory (estimates all concepts)')
     p_tok.add_argument('--verbose', '-v', action='store_true', help='Show per-file breakdown')
 
-    # create-bundle
-    p_cb = sub.add_parser('create-bundle', help='Create a new empty bundle directory')
-    p_cb.add_argument('bundle', help='Bundle directory path')
-    p_cb.add_argument('--version', help='OKF version to declare (e.g. 0.2)')
-    p_cb.add_argument('--name', help='Bundle display name')
-
     args = parser.parse_args()
     if not args.command:
         parser.print_help()
         sys.exit(1)
 
     commands = {
-        'list': cmd_list,
-        'read': cmd_read,
-        'write': cmd_write,
+        'create-bundle': cmd_create_bundle,
+        'list-concepts': cmd_list_concepts,
+        'read-doc': cmd_read_doc,
+        'write-doc': cmd_write_doc,
+        'ingest': cmd_ingest,
         'extract-links': cmd_extract_links,
         'validate': cmd_validate,
         'index': cmd_index,
         'tokens': cmd_tokens,
-        'create-bundle': cmd_create_bundle,
     }
     commands[args.command](args)
 

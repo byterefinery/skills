@@ -11,6 +11,11 @@ set -euo pipefail
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
+
+# Strip trailing whitespace from every line (keeps newlines intact)
+cleanup_md() {
+    sed -i 's/[[:space:]]*$//' "$1"
+}
 usage() { cat <<EOF
 Usage:
   markdown.sh to-md   <file> [-o output]     Convert to Markdown
@@ -91,6 +96,7 @@ cmd_to_md() {
             pandoc -t markdown "$input" -o "$output"
             ;;
     esac
+    cleanup_md "$output"
     printf '  → %s\n' "$output" >&2
 }
 
