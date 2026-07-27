@@ -5,11 +5,10 @@ allowed-tools: Bash(pandoc:*) Bash(uvx:*)
 metadata:
   tags:
     - meta
-    - document-conversion
     - markdown
     - pdf
     - office-documents
-    - excel
+    - document-conversion
 ---
 
 # markdown
