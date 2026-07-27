@@ -34,39 +34,24 @@ The format answers five questions that plain markdown cannot:
 
 ## Usage
 
-### Converting source documents with `markdown` skill
-
-Use the `markdown` skill to convert source documents into text before extracting concepts:
+### Converting documents with `markdown` skill
 
 ```bash
-# Convert PDF to markdown
-markdown.sh --to md ./annual-report-2024.pdf
-
-# Convert Word document
-markdown.sh --to md ./product-spec.docx
-
-# Convert Excel workbook (formula evaluation included)
+# PDF, Word, Excel (formula evaluation), PowerPoint
+markdown.sh --to md ./annual-report.pdf
 markdown.sh --to md ./financials.xlsx
-
-# Convert PowerPoint
-markdown.sh --to md ./quarterly-deck.pptx
 ```
 
-The output is structured markdown preserving headings, tables, lists, and code blocks. Track the original file path in `sources[].resource` and record page/slide/sheet locations in `sources[].location`.
+Track the original file path in `sources[].resource` and page/slide/sheet locations in `sources[].location`.
 
 ### Fetching web pages with `webfetch` skill
 
-Use the `webfetch` skill to retrieve web pages as markdown:
-
 ```bash
-# Fetch as markdown to stdout
 webfetch.sh https://example.com/docs/api
-
-# Save to file
 webfetch.sh --file ./api-docs.md https://example.com/docs/api
 ```
 
-The output is LLM-friendly markdown. Track the fetched URL in `sources[].resource` and record the section or heading in `sources[].location`.
+Track the fetched URL in `sources[].resource` and section/heading in `sources[].location`.
 
 ### Creating a bundle
 
@@ -97,6 +82,75 @@ Every concept is a UTF-8 markdown file with a YAML frontmatter block delimited b
 
   Common values: `Document`, `Concept`, `Reference`, `Attested Computation`, `Metric`, `Playbook`. Type values are not registered centrally — producers pick descriptive names, consumers tolerate unknown types gracefully.
 
+  Example — `Document`:
+
+  ```yaml
+  ---
+  type: Document
+  title: Annual Report 2024
+  description: Financial and operational summary for FY2024.
+  resource: /docs/annual-report-2024.pdf
+  tags: [finance, annual-report]
+  ---
+  ```
+
+  Example — `Concept`:
+
+  ```yaml
+  ---
+  type: Concept
+  title: Revenue Recognition Policy
+  description: Revenue recognized when control transfers to the customer, per ASC 606.
+  tags: [finance, revenue, policy]
+  sources:
+    - id: annual-report-2024
+      resource: /docs/annual-report-2024.pdf
+      location: { pages: [12, 13] }
+    - id: accounting-std
+      resource: https://example.com/asc-606
+      location: { section: "Performance Obligations" }
+  ---
+  ```
+
+  Example — `Reference`:
+
+  ```yaml
+  ---
+  type: Reference
+  title: Event Parameter Glossary
+  description: Standardized event parameters used across all analytics tables.
+  resource: https://example.com/docs/event-parameters
+  tags: [analytics, events, glossary]
+  ---
+  ```
+
+  Example — `Metric`:
+
+  ```yaml
+  ---
+  type: Metric
+  title: Monthly Active Users
+  description: Distinct users with at least one event in the month.
+  tags: [analytics, users, mau]
+  sources:
+    - id: product-deck-q3
+      resource: /slides/product-deck-q3.pptx
+      location: { slides: [7-9] }
+  ---
+  ```
+
+  Example — `Playbook`:
+
+  ```yaml
+  ---
+  type: Playbook
+  title: Triage a Data Freshness Alert
+  description: Steps to diagnose and resolve pipeline lag alerts.
+  tags: [oncall, incident]
+  status: stable
+  ---
+  ```
+
 ### Recommended
 
 - **`title`** — human-readable display name. Used verbatim in auto-generated `index.md` files.
@@ -106,12 +160,19 @@ Every concept is a UTF-8 markdown file with a YAML frontmatter block delimited b
 
 ### Provenance: `sources` and `location`
 
-`sources` records the materials a concept derives from. Each entry is a mapping:
+`sources` records the materials a concept derives from, external or internal to the bundle. Each entry is a mapping:
 
-- `resource` (required within entry) — the URI or path of the source.
-- `id` (recommended) — a stable key used for per-claim footnote attribution.
-- `title` (recommended) — human-readable label for the source.
-- `location` (recommended) — where within the source the information appeared.
+| Field | Required | Description |
+|---|---|---|
+| `resource` | Yes | URI, absolute URL, bundle-relative path, or scope descriptor. |
+| `id` | No | Stable key for per-claim footnote attribution. SHOULD be present when the body cites the source. |
+| `title` | No | Human-readable label for the source. |
+| `author` | No | Who produced the source, using actor convention. An authority signal. |
+| `usage_count` | No | How often the resource was exercised over `usage_window`. A liveness signal. |
+| `last_modified` | No | When the source itself last changed (`YYYY-MM-DD`). A recency signal. |
+| `location` | No | Where within the source the information appeared. See location formats below. |
+
+`usage_window` may appear as a sibling of `sources` to frame every `usage_count` with a `{ from, to }` date range. A single `sources` entry may carry its own `usage_window` to override the shared one. Per-source credibility signals (`author`, `usage_count`, `last_modified`) may also appear on individual `sources` entries.
 
 The `location` field is a mapping that varies by source type:
 
@@ -138,8 +199,6 @@ sources:
     location: { section: "Authentication" }
 ```
 
-Location formats by source type:
-
 | Source type | Location format |
 |---|---|
 | PDF | `{ pages: [3] }` or `{ pages: [3-5, 8] }` |
@@ -149,8 +208,6 @@ Location formats by source type:
 | Web / Markdown | `{ section: "## Authentication" }` or `{ heading: "API Keys" }` |
 
 When the location is unknown, omit `location` entirely.
-
-`usage_window` may appear as a sibling of `sources` to frame `usage_count` values with a `{ from, to }` date range. Per-source credibility signals (`author`, `usage_count`, `last_modified`) may also appear on individual `sources` entries.
 
 **Per-claim attribution** — to attribute a specific claim in the body, end the sentence with a markdown footnote whose label matches a `sources[].id`:
 
@@ -166,24 +223,21 @@ The footnote label is the join key into `sources`; consumers resolve attribution
 
 `generated` records how the current content was produced. `verified` records who or what has confirmed it. They are kept distinct because who *wrote* a concept need not be who *confirmed* it.
 
+| Field | Required | Description |
+|---|---|---|
+| `generated.by` | Yes (within `generated`) | Actor that produced the content. |
+| `generated.at` | No | ISO 8601 datetime of last meaningful change. |
+| `verified[].by` | Yes (within entry) | Actor that verified the content. |
+| `verified[].at` | Yes (within entry) | ISO 8601 datetime of the verification. |
+
 ```yaml
 generated: { by: okf_agent/claude-sonnet-4-5, at: 2025-07-15T14:30:00Z }
-```
-
-- `generated.by` — the actor that produced the content.
-- `generated.at` — ISO 8601 datetime of the last meaningful change.
-
-```yaml
 verified:
   - { by: human:alice, at: 2025-07-16T09:00:00Z }
   - { by: process:nightly-check, at: 2025-07-17T02:00:00Z }
 ```
 
-A single verifier may be written as a bare mapping without the list dash:
-
-```yaml
-verified: { by: human:alice, at: 2025-07-16T09:00:00Z }
-```
+A single verifier may be written as a bare mapping without the list dash: `verified: { by: human:alice, at: ... }`.
 
 **Trust tiers** are derived from `verified`:
 
@@ -199,28 +253,33 @@ verified: { by: human:alice, at: 2025-07-16T09:00:00Z }
 
 ### Lifecycle: `status` and `stale_after`
 
-```yaml
-status: stable        # draft | stable | deprecated
-stale_after: 2025-12-31
-```
+| Field | Required | Values | Default |
+|---|---|---|---|
+| `status` | No | `draft`, `stable`, `deprecated` | `stable` |
+| `stale_after` | No | `YYYY-MM-DD` absolute date | never stale |
 
 - `draft` — not yet reviewed; possibly incomplete.
 - `stable` — default when `status` is absent; ready for consumption.
 - `deprecated` — kept for links and history; no longer current.
 
-`stale_after` is an absolute date (`YYYY-MM-DD`). A concept is stale when `today >= stale_after`.
+`stale_after` is an absolute date. A concept is stale when `today >= stale_after`.
 
 ### Attested Computation
 
 An Attested Computation concept carries not just what a value *means* but a sanctioned way to *compute* it. The contract lives in frontmatter:
 
-- `runtime` (required) — how to run the computation. Example values: `python`, `javascript`, `typescript`, `bash`, `sqlite`, `html`, `css`, `json`, `yaml`, `toml`.
-- `parameters` — a list of typed, named holes: `{ name, type, required }`.
-- `computation` — optional path to an external file holding the computation. Absent → inline body fence under `# Computation`.
-- `executor` — `resource` names run instructions; `receipt` declares fields a run must return.
-- `attester` — `resource` names deterministic (no-LLM) code that inspects a receipt and returns a verdict.
+| Field | Required | Description |
+|---|---|---|
+| `runtime` | Yes | How to run the computation. Example values: `python`, `javascript`, `typescript`, `bash`, `sqlite`, `html`, `css`, `json`, `yaml`, `toml`. |
+| `parameters` | No | List of typed, named holes: `{ name, type, required }`. |
+| `computation` | No | Path to an external file holding the computation. Absent → inline body fence under `# Computation`. |
+| `executor.resource` | No | Run instructions or code. A runner follows it. |
+| `executor.receipt` | No | Fields a run must return — the evidence the attester inspects. |
+| `attester.resource` | No | Deterministic (no-LLM) code that takes a receipt and returns a verdict. |
 
-Example — a Python computation that computes active users:
+A computation is its own standalone concept. Other concepts that need the value link to it with a normal markdown link.
+
+Example — Python:
 
 ```yaml
 ---
@@ -241,21 +300,18 @@ attester:
 # Computation
 
     import json
-
     def compute(month: str, data_path: str) -> int:
         with open(data_path) as f:
             events = json.load(f)
-        users = {e["user_id"] for e in events if e["ts"].startswith(month)}
-        return len(users)
+        return len({e["user_id"] for e in events if e["ts"].startswith(month)})
 ```
 
-Example — a SQLite query:
+Example — SQLite:
 
 ```yaml
 ---
 type: Attested Computation
 title: Revenue by category
-description: Total revenue grouped by product category.
 runtime: sqlite
 parameters:
   - { name: db_path, type: string, required: true }
@@ -263,19 +319,15 @@ parameters:
 
 # Computation
 
-    SELECT category, SUM(amount) AS revenue
-    FROM orders
-    GROUP BY category
-    ORDER BY revenue DESC
+    SELECT category, SUM(amount) AS revenue FROM orders GROUP BY category ORDER BY revenue DESC
 ```
 
-Example — a Bash script:
+Example — Bash:
 
 ```yaml
 ---
 type: Attested Computation
 title: Disk usage summary
-description: Top directories by disk usage in a given path.
 runtime: bash
 parameters:
   - { name: target_dir, type: string, required: true }
@@ -287,13 +339,12 @@ parameters:
     du -sh "${target_dir}"/*/ 2>/dev/null | sort -rh | head -n "${top_n:-10}"
 ```
 
-Example — a JavaScript computation:
+Example — JavaScript:
 
 ```yaml
 ---
 type: Attested Computation
 title: Parse JSONL events
-description: Filter and aggregate events from a JSONL stream.
 runtime: javascript
 parameters:
   - { name: input_file, type: string, required: true }
@@ -302,19 +353,24 @@ parameters:
 
 # Computation
 
-    const fs = require('fs');
-    const lines = fs.readFileSync(input_file, 'utf8').trim().split('\n');
-    const events = lines
-      .map(l => JSON.parse(l))
-      .filter(e => !event_type || e.type === event_type);
-    console.log(JSON.stringify({ count: events.length, events }, null, 2));
+    const lines = require('fs').readFileSync(input_file, 'utf8').trim().split('\n');
+    const events = lines.map(l => JSON.parse(l)).filter(e => !event_type || e.type === event_type);
+    console.log(JSON.stringify({ count: events.length }, null, 2));
 ```
-
-A concept that *uses* a computation links to it with a normal markdown link — the computation is its own concept, reusable across multiple consumers.
 
 ### Extensions
 
 Producers may include any additional keys. Consumers must not reject documents with unrecognized fields and should preserve unknown keys when round-tripping.
+
+### Conformance
+
+A bundle is conformant with OKF v0.2 if:
+
+1. Every non-reserved `.md` file contains a parseable YAML frontmatter block.
+2. Every frontmatter block contains a non-empty `type` field.
+3. Reserved filenames (`index.md`, `log.md`) follow their defined structure when present.
+
+Consumers must not reject a bundle because of missing optional fields, unknown `type` values, unknown additional keys, broken cross-links, or missing `index.md` files.
 
 ## Body Conventions
 
@@ -351,20 +407,16 @@ path/to/bundle/
 
 **Reserved filenames** — `index.md` and `log.md` have defined meaning and must not be used for concept documents.
 
-**`index.md`** — enumerates directory contents for progressive disclosure. Contains no frontmatter (except bundle-root `index.md` which may carry `okf_version: "0.2"`). Body uses sections with bulleted lists:
+**`index.md`** — enumerates directory contents. No frontmatter (except bundle root may carry `okf_version: "0.2"`). Body uses sections with bulleted lists:
 
 ```markdown
 # Documents
 
 * [Annual Report 2024](annual-report-2024.md) — Financial and operational summary for FY2024.
-* [Product Roadmap](product-roadmap.md) — Q3-Q4 product planning document.
-
-# References
-
 * [Revenue computation](references/metrics/revenue.md) — Sanctioned revenue calculation.
 ```
 
-**`log.md`** — flat list of date-grouped entries, newest first:
+**`log.md`** — date-grouped change entries, newest first:
 
 ```markdown
 # Directory Update Log
@@ -372,9 +424,6 @@ path/to/bundle/
 ## 2025-07-15
 * **Update**: Added location metadata to [Annual Report](annual-report-2024.md) sources.
 * **Creation**: Established [Revenue computation](references/metrics/revenue.md).
-
-## 2025-07-10
-* **Initialization**: Created foundational directory structure.
 ```
 
 ## Cross-linking
@@ -393,15 +442,14 @@ Rules:
 
 ## Gotchas
 
-- **Always use file-relative paths for cross-links** — never use absolute paths beginning with `/`. A link like `(../references/metrics/revenue.md)` resolves correctly when browsing the bundle as plain files on GitHub or locally. An absolute path like `(/references/metrics/revenue.md)` breaks local file browsing.
-- **`type` is the only required frontmatter field** — a concept with just `type: Concept` is fully conformant. All other fields are optional, and their absence carries meaning (e.g., unverified vs verified).
-- **`location` varies by source type** — there is no single schema. Use the format that matches the source: `pages` for PDFs, `slides` for PPTX, `sheet` + `range` for XLSX, `section` or `heading` for web/markdown. Omit entirely when unknown.
-- **`sources` lives in frontmatter, not the body** — do not write a `# Citations` or `# References` body section for provenance. Use `sources` frontmatter + per-claim markdown footnotes.
-- **Footnote labels must match `sources[].id`** — the label is a join key, not free text. `[^ga4-schema]` must resolve to a `sources` entry with `id: ga4-schema`.
-- **`generated` and `verified` are distinct** — who *wrote* a concept is not who *confirmed* it. Content can change without re-confirmation, and facts can be re-confirmed without regeneration.
-- **Actor convention keys off `human:` prefix** — trust tiers derive from whether `verified` contains a `human:<id>` actor. Use `human:alice`, not `alice` or `Alice`.
-- **`status` absent means `stable`** — only set `status` for `draft` or `deprecated` concepts.
-- **Attested Computations are standalone concepts** — do not embed computations in other concept types. Make the computation its own `type: Attested Computation` document and link to it.
-- **`index.md` has no frontmatter** — except at bundle root, where `okf_version: "0.2"` is permitted.
-- **Producers may add arbitrary frontmatter keys** — consumers must not reject unknown fields. Preserve them when round-tripping.
-- **Bundles are consumed without source files** — the entire point of OKF is that agents can traverse and analyze content using only the bundle. `sources` records provenance, but the original PDF, XLSX, or URL need not be present at consumption time.
+- **Always use file-relative paths for cross-links** — never use absolute paths beginning with `/`. An absolute path breaks local file browsing.
+- **`type` is the only required frontmatter field** — a concept with just `type: Concept` is fully conformant.
+- **`location` varies by source type** — `pages` for PDF, `slides` for PPTX, `sheet` + `range` for XLSX, `section`/`heading` for web. Omit when unknown.
+- **`sources` lives in frontmatter, not the body** — do not write `# Citations` or `# References` body sections. Use `sources` frontmatter + per-claim footnotes.
+- **Footnote labels must match `sources[].id`** — the label is a join key, not free text.
+- **`generated` and `verified` are distinct** — who *wrote* need not be who *confirmed*.
+- **Actor convention keys off `human:` prefix** — trust tiers derive from `human:<id>` in `verified`. Use `human:alice`, not `alice`.
+- **`status` absent means `stable`** — only set `status` for `draft` or `deprecated`.
+- **Attested Computations are standalone** — do not embed computations in other types. Make the computation its own document and link to it.
+- **`index.md` has no frontmatter** — except bundle root, where `okf_version: "0.2"` is permitted.
+- **Bundles are consumed without source files** — `sources` records provenance, but the original PDF, XLSX, or URL need not be present.
