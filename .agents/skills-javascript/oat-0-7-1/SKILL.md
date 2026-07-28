@@ -107,13 +107,13 @@ ot.toast.clear();
 
 ## References
 
-- [00-installation](references/00-installation.md) — CDN, npm, download methods and build setup
-- [01-layout](references/01-layout.md) — Grid system, sidebar layout, topnav, responsive behavior
-- [02-typography](references/02-typography.md) — Headings, paragraphs, lists, code, blockquotes, base text elements
-- [03-forms](references/03-forms.md) — Inputs, selects, textareas, checkboxes, radios, switches, fieldsets, validation
-- [04-components-css](references/04-components-css.md) — CSS-only components: accordion, alert, avatar, badge, breadcrumb, button, card, dialog, meter, pagination, progress, skeleton, spinner, switch, table, tooltip
-- [05-components-js](references/05-components-js.md) — JS Web Components: dropdown, tabs, taginput, toast, upload
-- [06-utilities](references/06-utilities.md) — Utility classes, flex helpers, spacing, text alignment
-- [07-customizing](references/07-customizing.md) — CSS variables, theming, dark mode, overrides, selective imports
-- [08-recipes](references/08-recipes.md) — Composable patterns: split buttons, radio cards, form cards, empty states, stats dashboards
-- [09-extensions](references/09-extensions.md) — Community extensions: oat-chips, oat-animate, oat-table, oat-upload
+- [01-installation](references/01-installation.md) — CDN, npm, download methods and build setup
+- [02-layout](references/02-layout.md) — Grid system, sidebar layout, topnav, responsive behavior
+- [03-typography](references/03-typography.md) — Headings, paragraphs, lists, code, blockquotes, base text elements
+- [04-forms](references/04-forms.md) — Inputs, selects, textareas, checkboxes, radios, switches, fieldsets, validation
+- [05-components-css](references/05-components-css.md) — CSS-only components: accordion, alert, avatar, badge, breadcrumb, button, card, dialog, meter, pagination, progress, skeleton, spinner, switch, table, tooltip
+- [06-components-js](references/06-components-js.md) — JS Web Components: dropdown, tabs, taginput, toast, upload
+- [07-utilities](references/07-utilities.md) — Utility classes, flex helpers, spacing, text alignment
+- [08-customizing](references/08-customizing.md) — CSS variables, theming, dark mode, overrides, selective imports
+- [09-recipes](references/09-recipes.md) — Composable patterns: split buttons, radio cards, form cards, empty states, stats dashboards
+- [10-extensions](references/10-extensions.md) — Community extensions: oat-chips, oat-animate, oat-table, oat-upload
