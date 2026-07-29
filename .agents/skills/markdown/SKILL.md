@@ -125,7 +125,3 @@ The script reports per-step and total processing time on stderr:
 - **Conversions are not perfectly lossless** — complex formatting, custom styles, and advanced layouts may degrade. Structure is preserved, not presentation details.
 - **HTML output can be large** — the standalone single-file HTML embeds all CSS and images as data URIs, increasing file size.
 - **Images are skipped** — docling uses `--image-export-mode placeholder` so images produce `<!-- image -->` markers rather than embedded base64 data. This keeps output files small and text-only.
-
-## References
-
-- [01-onnx-vs-transformers](references/01-onnx-vs-transformers.md) — ONNX Runtime vs PyTorch analysis for docling models
