@@ -21,7 +21,7 @@ Format is auto-detected from file extensions — no subcommands needed. Use `-i 
 
 For Excel files, formulas are evaluated before conversion so computed values appear in the output rather than raw formula expressions.
 
-PDF extraction uses a fallback chain: **docling → pypdf → poppler → ghostscript**. Docling default uses the standard pipeline (ONNX Runtime for layout detection, fast). Use `--ocr` for the VLM pipeline (granite-docling-258M, handles scanned pages).
+PDF extraction uses a fallback chain: **docling → pypdf → poppler → ghostscript**. Docling uses ONNX Runtime for layout detection (Heron model, ~2x faster than Transformers). Use `--ocr` for RapidOCR, `--vlm` for full VLM pipeline.
 
 ## Usage
 
@@ -51,17 +51,25 @@ Format is detected from the output file extension (`.pdf` or `.html`).
 ### PDF engine selection
 
 ```bash
-# Default: docling standard pipeline (ONNX layout, fast, text-layer PDFs)
+# Default: docling standard pipeline (Heron layout via ONNX Runtime, fast)
 markdown.sh -i report.pdf
 
-# VLM pipeline with OCR for scanned pages (slower, best quality)
+# Explicit layout mode (same as default, ONNX Runtime)
+markdown.sh -i report.pdf --layout
+
+# Standard pipeline + RapidOCR for scanned pages
 markdown.sh -i report.pdf --ocr
 
-# Force specific engines
+# VLM pipeline (Granite-Docling-258M, full visual understanding)
+markdown.sh -i report.pdf --vlm
+
+# Force fallback engines (no AI models, text layer only)
 markdown.sh -i report.pdf --pypdf
 markdown.sh -i report.pdf --poppler
 markdown.sh -i report.pdf --gs
 ```
+
+`--ocr` and `--vlm` are mutually exclusive. `--layout` is optional (same as default).
 
 ### Page and OCR comments
 
@@ -106,16 +114,16 @@ The script reports per-step and total processing time on stderr:
 
 ## Gotchas
 
-- **PDF fallback chain** — when no engine flag is given: docling → pypdf → poppler → ghostscript. First successful engine is used. Use `--docling`, `--pypdf`, `--poppler`, `--gs` to force a specific engine. Flags are mutually exclusive.
+- **PDF fallback chain** — when no engine flag is given: docling → pypdf → poppler → ghostscript. First successful engine is used. Use `--docling`, `--layout`, `--ocr`, `--vlm`, `--pypdf`, `--poppler`, `--gs` to force a specific engine. Flags are mutually exclusive.
+- **`--ocr` and `--vlm` are mutually exclusive** — choose one. `--layout` is optional and equivalent to default behavior.
 - **Engine capabilities**:
-  - **docling (standard)**: ONNX Runtime for layout detection, extracts text/tables from PDF text layer, fast (~30-60s for typical PDFs). Empty output for fully scanned PDFs.
-  - **docling-ocr (`--ocr`)**: VLM pipeline with granite-docling-258M, full visual understanding, handles scanned pages via VLM, slower (~5-10min). Best quality for mixed/scanned PDFs.
-  - **pypdf**: fast, extracts text layer only (empty for scanned pages)
-  - **poppler**: fast, preserves layout with `-layout` flag (empty for scanned pages)
-  - **ghostscript**: extracts text layer via txtwrite device (empty for scanned pages)
-- **Standard vs VLM pipeline**:
-  - Standard (`--docling` or default): Uses ONNX Runtime for layout detection. Fast, lightweight. Works great for PDFs with text layers. Produces empty output for fully scanned PDFs.
-  - VLM (`--ocr`): Uses granite-docling-258M via PyTorch. Handles scanned pages, extracts text/tables/charts from visual content. Much slower but best quality. No ONNX Runtime option for the VLM model in docling currently.
+  - **docling (standard, `--docling`, `--layout`)**: Heron layout detection via ONNX Runtime, extracts text/tables from PDF text layer. ~180s for 129-page PDF on CPU. Empty output for fully scanned PDFs.
+  - **docling-ocr (`--ocr`)**: Standard pipeline + RapidOCR (ONNX backend), handles scanned pages via OCR. ~210s for 129-page PDF on CPU.
+  - **docling-vlm (`--vlm`)**: VLM pipeline with Granite-Docling-258M, full visual understanding. Requires GPU for practical use (>30min on CPU). Best quality for mixed/scanned PDFs.
+  - **pypdf**: ~2s, extracts text layer only (empty for scanned pages)
+  - **poppler**: ~1s, preserves layout with `-layout` flag (empty for scanned pages)
+  - **ghostscript**: ~6s, extracts text layer via txtwrite device (empty for scanned pages)
+- **ONNX Runtime for layout** — the default docling mode uses ONNX Runtime (not Transformers) for the Heron layout model, giving ~2x speedup over the CLI default.
 - **Page comments** — `<!-- page N -->` inserted by default. Suppress with `--no-insert-page-number`.
 - **OCR comments** — `<!-- ocr N -->` inserted on pages where docling used OCR (scanned pages, all images). Suppress with `--no-ocr-page-number`.
 - **Image conversion** — uses docling standard pipeline by default. Add `--ocr` for VLM pipeline. All image pages get both `<!-- page N -->` and `<!-- ocr N -->` by default.
