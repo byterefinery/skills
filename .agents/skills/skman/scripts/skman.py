@@ -1,19 +1,34 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+#
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["PyYAML", "yq"]
+# ///
+
 """skman — Skill Manager: scaffold, validate, and inspect agent skills.
 
 Usage:
-    skman.sh --help
-    skman.sh create --help
-    skman.sh validate --help
-    skman.sh info --help
+    skman.py --help
+    skman.py create --help
+    skman.py validate --help
+    skman.py info --help
+    skman.py search --help
 """
 
 import argparse
+import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import textwrap
 import unicodedata
+
+try:
+    import yaml
+except ImportError:
+    yaml = None  # will error at runtime if missing
 
 
 # ---------------------------------------------------------------------------
@@ -29,12 +44,7 @@ FRONTMATTER_RE = re.compile(
 )
 YAML_LINE_RE = re.compile(r'^(?P<key>[a-z][a-z0-9_-]*)\s*:\s*(?P<value>.*)$')
 
-DEFAULT_SKILL_MD = textwrap.dedent("""\
----
-name: {name}
-description: {description}
----
-
+BODY_TEMPLATE = textwrap.dedent("""\
 # {title}
 
 ## Overview
@@ -47,12 +57,22 @@ description: {description}
 
 """)
 
-DEFAULT_SKILL_MD_WITH_SCRIPTS = textwrap.dedent("""\
----
-name: {name}
-description: {description}
----
+BODY_TEMPLATE_WITH_PYTHON_SCRIPT = textwrap.dedent("""\
+# {title}
 
+## Overview
+
+[Describe what this skill does and when to use it.]
+
+## Usage
+
+```bash
+{script_name}.py --help
+```
+
+""")
+
+BODY_TEMPLATE_WITH_SHELL_SCRIPT = textwrap.dedent("""\
 # {title}
 
 ## Overview
@@ -80,59 +100,59 @@ VERSION_SUFFIX_RE = re.compile(r'-(\d+(?:-\d+)+)$')
 _URL_PATTERNS = [
     # GitHub: /{user}/{repo}/releases/tag/v{ver}
     (re.compile(
-        r'github\.com/[^/]+/([^/]+)/releases/tag/v?([^?#/]+)'    
+        r'github\.com/[^/]+/([^/]+)/releases/tag/v?([^?#/]+)'
     ), '1', '2'),
     # GitHub: /{user}/{repo}/tree/v{ver}
     (re.compile(
-        r'github\.com/[^/]+/([^/]+)/tree/v?([^?#/]+)'    
+        r'github\.com/[^/]+/([^/]+)/tree/v?([^?#/]+)'
     ), '1', '2'),
     # GitHub: /{user}/{repo}/-/tags/v{ver} (GitLab-style also on github enterprise)
     (re.compile(
-        r'github\.com/[^/]+/([^/]+)/-/tags/v?([^?#/]+)'    
+        r'github\.com/[^/]+/([^/]+)/-/tags/v?([^?#/]+)'
     ), '1', '2'),
     # GitLab: /{user}/{repo}/-/tags/v{ver}
     (re.compile(
-        r'gitlab\.com/[^/]+/([^/]+)/-/tags/v?([^?#/]+)'    
+        r'gitlab\.com/[^/]+/([^/]+)/-/tags/v?([^?#/]+)'
     ), '1', '2'),
     # GitLab: /{user}/{repo}/tags/v{ver}
     (re.compile(
-        r'gitlab\.com/[^/]+/([^/]+)/tags/v?([^?#/]+)'    
+        r'gitlab\.com/[^/]+/([^/]+)/tags/v?([^?#/]+)'
     ), '1', '2'),
     # PyPI: pypi.org/project/{pkg}/{ver}
     (re.compile(
-        r'pypi\.org/project/([^/]+)/([^?#/]+)'    
+        r'pypi\.org/project/([^/]+)/([^?#/]+)'
     ), '1', '2'),
     # npm: npmjs.com/package/{pkg}/v/{ver}
     (re.compile(
-        r'npmjs\.com/package/([^/]+)/v/([^?#/]+)'    
+        r'npmjs\.com/package/([^/]+)/v/([^?#/]+)'
     ), '1', '2'),
     # crates.io: crates.io/crates/{pkg}/{ver}
     (re.compile(
-        r'crates\.io/crates/([^/]+)/([^?#/]+)'    
+        r'crates\.io/crates/([^/]+)/([^?#/]+)'
     ), '1', '2'),
     # RubyGems: rubygems.org/gems/{gem}/{ver}
     (re.compile(
-        r'rubygems\.org/gems/([^/]+)/([^?#/]+)'    
+        r'rubygems\.org/gems/([^/]+)/([^?#/]+)'
     ), '1', '2'),
     # Go pkg: pkg.go.dev/{module}/v{ver}
     (re.compile(
-        r'pkg\.go\.dev/([^/]+)/v?([^?#/]+)'    
+        r'pkg\.go\.dev/([^/]+)/v?([^?#/]+)'
     ), '1', '2'),
     # npm (no version): npmjs.com/package/{pkg}
     (re.compile(
-        r'npmjs\.com/package/([^/?#/]+)'    
+        r'npmjs\.com/package/([^/?#/]+)'
     ), '1', None),
     # crates.io (no version): crates.io/crates/{pkg}
     (re.compile(
-        r'crates\.io/crates/([^/?#/]+)'    
+        r'crates\.io/crates/([^/?#/]+)'
     ), '1', None),
     # GitHub (no version): github.com/{user}/{repo}[.git]
     (re.compile(
-        r'github\.com/[^/]+/([^/.]+)(?:\.git)?(?:[?#/].*)?$'    
+        r'github\.com/[^/]+/([^/.]+)(?:\.git)?(?:[?#/].*)?$'
     ), '1', None),
     # GitLab (no version): gitlab.com/{user}/{repo}[.git]
     (re.compile(
-        r'gitlab\.com/[^/]+/([^/.]+)(?:\.git)?(?:[?#/].*)?$'    
+        r'gitlab\.com/[^/]+/([^/.]+)(?:\.git)?(?:[?#/].*)?$'
     ), '1', None),
 ]
 
@@ -315,20 +335,29 @@ def _chars_to_tokens(text, in_code=False):
 def _parse_frontmatter(text):
     """Return (frontmatter_dict, body_text) or (None, text) if no frontmatter.
 
-    Handles single-line values, quoted multi-line values, block scalars (|, >),
-    indented continuation lines, and nested mappings/lists (e.g. metadata.tags).
+    Uses PyYAML (yaml.safe_load) for robust parsing of all YAML constructs:
+    scalars, block literals, folded strings, nested mappings, lists, etc.
     """
     m = FRONTMATTER_RE.match(text)
     if not m:
         return None, text
     body = text[m.end():]
+    raw = m.group('content')
+    if yaml is not None:
+        try:
+            fm = yaml.safe_load(raw)
+            if fm is None:
+                fm = {}
+            return fm, body
+        except yaml.YAMLError:
+            pass  # fall through to legacy parser
+    # Legacy regex-based parser — fallback if PyYAML is missing or fails
     fm = {}
-    lines = m.group('content').splitlines()
+    lines = raw.splitlines()
     i = 0
     while i < len(lines):
         line = lines[i]
         stripped = line.strip()
-        # Skip blank lines and comments
         if not stripped or stripped.startswith('#'):
             i += 1
             continue
@@ -338,7 +367,6 @@ def _parse_frontmatter(text):
             continue
         key = lm.group('key')
         value = lm.group('value').strip()
-        # Handle block scalars (| or >)
         if value in ('|', '>'):
             i += 1
             block_lines = []
@@ -351,7 +379,6 @@ def _parse_frontmatter(text):
                     break
             fm[key] = '\n'.join(block_lines)
             continue
-        # Handle quoted multi-line values
         if value.startswith('"') and not value.endswith('"'):
             i += 1
             parts = [value[1:]]
@@ -376,7 +403,6 @@ def _parse_frontmatter(text):
                 i += 1
             fm[key] = '\n'.join(parts)
             continue
-        # Handle nested mapping: key with no value, followed by indented children
         if not value:
             i += 1
             child = {}
@@ -388,10 +414,7 @@ def _parse_frontmatter(text):
                 if not nstripped or nstripped.startswith('#'):
                     i += 1
                     continue
-                # Check for list items (- item)
                 if nstripped.startswith('- '):
-                    # Collect all list items under the nearest sub-key
-                    # Find the sub-key by looking at previous context
                     list_items = [nstripped[2:].strip()]
                     i += 1
                     while i < len(lines):
@@ -406,27 +429,20 @@ def _parse_frontmatter(text):
                             i += 1
                         else:
                             break
-                    # Assign to last sub-key seen
                     if child:
                         last_key = list(child.keys())[-1]
                         child[last_key] = list_items
                     continue
-                # Sub-key: value
                 slm = YAML_LINE_RE.match(nstripped)
                 if slm:
                     skey = slm.group('key')
                     sval = slm.group('value').strip()
-                    if not sval:
-                        # Nested sub-mapping (rare, treat as empty string)
-                        child[skey] = {}
-                    else:
-                        child[skey] = sval
+                    child[skey] = {} if not sval else sval
                     i += 1
                 else:
                     i += 1
             fm[key] = child
             continue
-        # Handle indented continuation lines (next line is indented more)
         i += 1
         while i < len(lines):
             next_line = lines[i]
@@ -439,6 +455,38 @@ def _parse_frontmatter(text):
                 break
         fm[key] = value
     return fm, body
+
+
+def _build_frontmatter_yaml(data):
+    """Serialize a dict to a YAML frontmatter block (--- ... ---).
+
+    Uses PyYAML if available, falls back to manual serialization.
+    """
+    if yaml is not None:
+        raw = yaml.dump(
+            data,
+            default_flow_style=False,
+            sort_keys=False,
+            allow_unicode=True,
+            width=1000,  # avoid line wrapping
+        ).rstrip('\n')
+        return f"---\n{raw}\n---\n"
+    # Fallback: manual serialization
+    lines = ['---']
+    for key, value in data.items():
+        if isinstance(value, dict):
+            lines.append(f"{key}:")
+            for k2, v2 in value.items():
+                if isinstance(v2, list):
+                    lines.append(f"  {k2}:")
+                    for item in v2:
+                        lines.append(f"    - {item}")
+                else:
+                    lines.append(f"  {k2}: {v2}")
+        else:
+            lines.append(f"{key}: {value}")
+    lines.append('---')
+    return '\n'.join(lines) + '\n'
 
 
 def _validate_name(name):
@@ -858,22 +906,16 @@ def cmd_create(args):
     if url:
         try:
             url_name, url_version = _extract_name_version_preserve_case(url)
-            # URL-extracted values are defaults — explicit flags override
-            if not name or name == args.name.strip():
-                # name came from positional arg, only use url_name if --url was the sole source
-                pass  # keep explicit name
             if url_version and not version:
                 version = url_version
                 print(f"create: extracted version '{version}' from URL")
         except ValueError as e:
-            # Regex failed — try LLM fallback for version
             print(f"create: regex extraction failed ({e}), trying LLM fallback…", file=sys.stderr)
             if not version:
                 llm_version = _llm_extract_version(url, name)
                 if llm_version:
                     version = llm_version
                     print(f"create: LLM extracted version '{version}'")
-
 
     # Validate before creating anything
     errors = []
@@ -888,7 +930,6 @@ def cmd_create(args):
 
     # Build directory name and H1 title
     if version:
-        # Normalize: dots in H1, hyphens in dir name
         version_dots = version.replace('-', '.')
         version_hyphen = version.replace('.', '-')
         dir_name = f"{name}-{version_hyphen}"
@@ -906,25 +947,79 @@ def cmd_create(args):
         print(f"create: {skill_md_path} already exists — skipping", file=sys.stderr)
         sys.exit(1)
 
-    if args.with_scripts:
-        content = DEFAULT_SKILL_MD_WITH_SCRIPTS.format(
-            name=dir_name, description=description, title=h1_title,
-            script_name=name,
+    # Determine script mode
+    with_scripts = args.with_scripts
+    lang = getattr(args, 'lang', None)
+    shell_mode = lang == 'bash' or getattr(args, 'shell', False)
+
+    # Build SKILL.md content: frontmatter (via PyYAML) + body
+    fm_data = {'name': dir_name, 'description': description}
+    frontmatter = _build_frontmatter_yaml(fm_data)
+
+    if with_scripts and shell_mode:
+        body = BODY_TEMPLATE_WITH_SHELL_SCRIPT.format(
+            title=h1_title, script_name=name,
+        )
+    elif with_scripts:
+        body = BODY_TEMPLATE_WITH_PYTHON_SCRIPT.format(
+            title=h1_title, script_name=name,
         )
     else:
-        content = DEFAULT_SKILL_MD.format(name=dir_name, description=description, title=h1_title)
-    with open(skill_md_path, 'w') as f:
-        f.write(content)
+        body = BODY_TEMPLATE.format(title=h1_title)
 
-    # Optionally create scripts directory
-    if args.with_scripts:
+    with open(skill_md_path, 'w') as f:
+        f.write(frontmatter)
+        f.write(body)
+
+    # Create scripts
+    if with_scripts:
         scripts_dir = os.path.join(skill_dir, 'scripts')
         os.makedirs(scripts_dir, exist_ok=True)
 
-        lang = getattr(args, 'lang', None)
+        if shell_mode:
+            # Shell + Python: scripts/<name>.sh + scripts/_<name>.py
+            # Python has no PyPI deps — bash calls it directly
+            py_path = os.path.join(scripts_dir, f'_{name}.py')
+            with open(py_path, 'w') as f:
+                f.write(textwrap.dedent(f'''
+                    #!/usr/bin/env python3
 
-        if lang == 'python':
-            # Python script with PEP 723 inline dependencies
+                    """{name} — {description}
+
+                    Usage:
+                        {name}.sh <subcommand> [args...]
+                    """
+
+                    import argparse
+                    import sys
+
+
+                    def main():
+                        parser = argparse.ArgumentParser(prog="{name}")
+                        parser.parse_args()
+                        # TODO: implement {name}
+
+
+                    if __name__ == "__main__":
+                        main()
+                    ''').lstrip('\n'))
+            os.chmod(py_path, 0o755)
+            print(f"create: created Python script at {py_path}")
+
+            sh_path = os.path.join(scripts_dir, f'{name}.sh')
+            with open(sh_path, 'w') as f:
+                f.write(f'#!/usr/bin/env bash\n')
+                f.write(f'# {name} — {description}\n')
+                f.write(f'set -euo pipefail\n')
+                f.write(f'\n')
+                f.write(f'SCRIPT_DIR="$(cd "$(dirname "${{BASH_SOURCE[0]}}")" && pwd)"\n')
+                f.write(f'\n')
+                f.write(f'exec python3 "$SCRIPT_DIR/_{name}.py" "$@"\n')
+            os.chmod(sh_path, 0o755)
+            print(f"create: created bash wrapper at {sh_path}")
+
+        else:
+            # Default: scripts/<name>.py with PEP 723 shebang
             py_path = os.path.join(scripts_dir, f'{name}.py')
             with open(py_path, 'w') as f:
                 f.write(textwrap.dedent(f'''
@@ -959,43 +1054,13 @@ def cmd_create(args):
             os.chmod(py_path, 0o755)
             print(f"create: created Python script at {py_path}")
 
-            # Bash wrapper that delegates to Python via uv run
-            sh_path = os.path.join(scripts_dir, f'{name}.sh')
-            with open(sh_path, 'w') as f:
-                f.write(f'#!/usr/bin/env bash\n')
-                f.write(f'# {name} — {description}\n')
-                f.write(f'set -euo pipefail\n')
-                f.write(f'\n')
-                f.write(f'SCRIPT_DIR="$(cd "$(dirname "${{BASH_SOURCE[0]}}")" && pwd)"\n')
-                f.write(f'\n')
-                f.write(f'exec uv run "$SCRIPT_DIR/{name}.py" "$@"\n')
-            os.chmod(sh_path, 0o755)
-            print(f"create: created bash wrapper at {sh_path}")
-
-        else:
-            # Bash wrapper only (no assumed implementation)
-            sh_path = os.path.join(scripts_dir, f'{name}.sh')
-            with open(sh_path, 'w') as f:
-                f.write(f'#!/usr/bin/env bash\n')
-                f.write(f'# {name} — {description}\n')
-                f.write(f'set -euo pipefail\n')
-                f.write(f'\n')
-                f.write(f'SCRIPT_DIR="$(cd "$(dirname "${{BASH_SOURCE[0]}}")" && pwd)"\n')
-                f.write(f'\n')
-                f.write(f'# TODO: implement {name}\n')
-                f.write(f'echo "Usage: {name}.sh <subcommand> [args...]"\n')
-                f.write(f'exit 1\n')
-            os.chmod(sh_path, 0o755)
-
-            print(f"create: created bash wrapper at {sh_path}")
-
     # Optionally create references directory
     if args.with_references:
         ref_dir = os.path.join(skill_dir, 'references')
         os.makedirs(ref_dir, exist_ok=True)
         placeholder = os.path.join(ref_dir, '01-reference.md')
         with open(placeholder, 'w') as f:
-            f.write(f"# {title} Reference\n\n[Detailed reference content.]\n")
+            f.write(f"# {h1_title} Reference\n\n[Detailed reference content.]\n")
         print(f"create: created references placeholder at {placeholder}")
 
     print(f"create: scaffolded skill '{dir_name}' at {skill_md_path}")
@@ -1355,7 +1420,24 @@ def cmd_info(args):
 
     fm, body = _parse_frontmatter(content)
 
-    # Print frontmatter
+    # Structured output modes
+    if getattr(args, 'json', False):
+        if fm:
+            print(json.dumps(fm, indent=2, ensure_ascii=False))
+        else:
+            print("{}")
+        return
+
+    if getattr(args, 'yaml_out', False):
+        if yaml is not None and fm:
+            print(yaml.dump(fm, default_flow_style=False, sort_keys=False, allow_unicode=True))
+        elif fm:
+            print(_build_frontmatter_yaml(fm).strip())
+        else:
+            print("{}")
+        return
+
+    # Default: human-readable output
     print("info: SKILL.md analysis")
     print("-" * 40)
     if fm:
@@ -1363,18 +1445,15 @@ def cmd_info(args):
             val = fm.get(key)
             if val is not None:
                 print(f"  {key}: {val}")
-        # Show metadata if present
         metadata = fm.get('metadata')
         if metadata is not None:
             tags = metadata.get('tags', [])
             if tags:
                 print(f"  metadata.tags: {', '.join(tags)}")
-        # Show optional standard fields
         for key in ('license', 'compatibility', 'allowed-tools'):
             val = fm.get(key)
             if val is not None:
                 print(f"  {key}: {val}")
-        # Show any extra fields
         known_fields = {'name', 'description', 'license', 'compatibility', 'allowed-tools', 'metadata'}
         extra = set(fm.keys()) - known_fields
         for key in sorted(extra):
@@ -1382,7 +1461,6 @@ def cmd_info(args):
     else:
         print("  (no frontmatter)")
 
-    # Structural summary
     body_lines = body.splitlines()
     headings = []
     in_fence = False
@@ -1408,7 +1486,6 @@ def cmd_info(args):
             indent = "    " * (depth - 1)
             print(f"  {indent}- {text}")
 
-    # Directory listing
     skill_dir = os.path.dirname(skill_md)
     entries = sorted(os.listdir(skill_dir))
     if entries:
@@ -1420,6 +1497,98 @@ def cmd_info(args):
             else:
                 size = os.path.getsize(full)
                 print(f"    {entry} ({size} bytes)")
+
+
+# ---------------------------------------------------------------------------
+# search subcommand
+# ---------------------------------------------------------------------------
+
+def cmd_search(args):
+    """Search skills by querying frontmatter with a jq-style expression.
+
+    Discovers all SKILL.md files in the target directory, extracts frontmatter,
+    and runs the user's jq expression via `yq` against each. Skills where the
+    expression produces non-empty output are returned.
+
+    Examples:
+        skman.py search '.description | test("pdf"; "i")'
+        skman.py search '.metadata.tags | index("python")'
+        skman.py search '.license == "MIT"'
+        skman.py search --skills-dir .agents/skills '.name'
+        skman.py search --json '.name, .description'
+    """
+    skills_dir = args.skills_dir
+    jq_expr = args.expr
+    json_out = getattr(args, 'json', False)
+
+    # Discover SKILL.md files
+    skill_dirs = _discover_skill_dirs(skills_dir)
+    if not skill_dirs:
+        print(f"search: no skills found in '{skills_dir}'", file=sys.stderr)
+        sys.exit(1)
+
+    # Check if yq is available
+    yq_path = shutil.which('yq')
+    if not yq_path:
+        print("search: yq not found on PATH. Install via: pip install yq", file=sys.stderr)
+        sys.exit(1)
+
+    results = []
+
+    for skill_dir in skill_dirs:
+        skill_md = os.path.join(skill_dir, 'SKILL.md')
+        with open(skill_md, 'r') as f:
+            content = f.read()
+
+        fm, body = _parse_frontmatter(content)
+        if fm is None:
+            continue
+
+        # Serialize frontmatter as YAML for yq
+        if yaml is not None:
+            fm_yaml = yaml.dump(
+                fm, default_flow_style=False, sort_keys=False,
+                allow_unicode=True, width=1000,
+            )
+        else:
+            # Fallback: build minimal YAML manually
+            fm_yaml = _build_frontmatter_yaml(fm).strip('---\n') + '\n'
+
+        # Run yq with the user's jq expression
+        try:
+            proc = subprocess.run(
+                ['yq', jq_expr],
+                input=fm_yaml,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            output = proc.stdout.strip()
+            if output and output != 'null' and output != 'false':
+                dir_basename = os.path.basename(skill_dir)
+                results.append({
+                    'skill': dir_basename,
+                    'path': skill_md,
+                    'output': output,
+                    'frontmatter': fm,
+                })
+        except subprocess.TimeoutExpired:
+            print(f"search: yq timed out on {skill_md}", file=sys.stderr)
+        except Exception as e:
+            print(f"search: error querying {skill_md}: {e}", file=sys.stderr)
+
+    # Output results
+    if json_out:
+        print(json.dumps(results, indent=2, ensure_ascii=False))
+    elif results:
+        for r in results:
+            print(f"{r['skill']}:")
+            # Format output nicely
+            for line in r['output'].split('\n'):
+                print(f"  {line}")
+            print()
+    else:
+        print(f"search: no matches for expression '{jq_expr}'")
 
 
 # ---------------------------------------------------------------------------
@@ -1526,12 +1695,13 @@ def build_parser():
     parser = argparse.ArgumentParser(
         prog='skman',
         description=textwrap.dedent("""\
-            Skill Manager — scaffold, validate, and inspect agent skills.
+            Skill Manager — scaffold, validate, search, and inspect agent skills.
 
             Subcommands:
               create      Scaffold a new skill directory with SKILL.md
               validate    Check SKILL.md against spec rules
               info        Print frontmatter and structural summary
+              search      Query skills by frontmatter using jq expressions
               generate    Generate Skills Table and Statistics in README.md
 
             Use '<subcommand> --help' for details on each subcommand.
@@ -1546,15 +1716,18 @@ def build_parser():
         description=textwrap.dedent("""\
             Scaffold a new skill directory with SKILL.md and optional scripts/references.
 
+            Script modes:
+              --with-scripts              Default: scripts/<name>.py (PEP 723, needs uv)
+              --with-scripts --lang bash  Shell: scripts/<name>.sh + scripts/_<name>.py
+              --with-scripts --shell      Same as --lang bash
+
             Examples:
-              skman.sh create my-skill "Does X and Y"
-              skman.sh create my-skill "Desc" --with-scripts --with-references
-              skman.sh create my-skill "Desc" --with-scripts --lang python
-              skman.sh create my-skill "Desc" -o ./custom-skills
-              skman.sh create demo-skill "Dummy example skill" --version 2.4.1
-              skman.sh create numpy "NumPy skill" --url https://github.com/numpy/numpy/releases/tag/v1.26.0
-              skman.sh create requests "HTTP skill" --url https://pypi.org/project/requests/2.31.0
-              skman.sh create serde "Serialization" --url https://crates.io/crates/serde/1.0.190
+              skman.py create my-skill "Does X and Y"
+              skman.py create my-skill "Desc" --with-scripts --with-references
+              skman.py create my-skill "Desc" --with-scripts --lang bash
+              skman.py create my-skill "Desc" -o ./custom-skills
+              skman.py create demo-skill "Dummy example skill" --version 2.4.1
+              skman.py create numpy "NumPy skill" --url https://github.com/numpy/numpy/releases/tag/v1.26.0
         """),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -1563,7 +1736,7 @@ def build_parser():
     p_create.add_argument(
         '--url',
         default=None,
-        help='Source URL (GitHub, PyPI, npm, crates.io, etc.). Auto-extracts name and version. Explicit --name/--version override extracted values.',
+        help='Source URL (GitHub, PyPI, npm, crates.io, etc.). Auto-extracts name and version.',
     )
     p_create.add_argument(
         '--version', '-V',
@@ -1578,13 +1751,18 @@ def build_parser():
     p_create.add_argument(
         '--with-scripts',
         action='store_true',
-        help='Also create scripts/ directory with bash wrapper',
+        help='Create scripts/ directory. Default: <name>.py (PEP 723). Use --lang bash for shell wrapper.',
     )
     p_create.add_argument(
         '--lang',
         default=None,
-        choices=['python'],
-        help='Language for the dependent script (e.g. python). Scaffolded script uses uv run --script with PEP 723 inline dependencies.',
+        choices=['python', 'bash'],
+        help='Script language: python (default, PEP 723), bash (shell + _<name>.py)',
+    )
+    p_create.add_argument(
+        '--shell',
+        action='store_true',
+        help='Alias for --lang bash: create <name>.sh + _<name>.py',
     )
     p_create.add_argument(
         '--with-references',
@@ -1611,11 +1789,10 @@ def build_parser():
               - Body line count (warning if over 500)
 
             Examples:
-              skman.sh validate ./my-skill
-              skman.sh validate ./my-skill/SKILL.md
-              skman.sh validate --strict ./my-skill
-              skman.sh validate .agents/skills        # validate all skills
-              skman.sh validate ./skills-python        # validate custom collection
+              skman.py validate ./my-skill
+              skman.py validate ./my-skill/SKILL.md
+              skman.py validate --strict ./my-skill
+              skman.py validate .agents/skills        # validate all skills
         """),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -1638,13 +1815,47 @@ def build_parser():
               - Heading outline
               - Directory listing with file sizes
 
+            Use --json or --yaml for structured output.
+
             Examples:
-              skman.sh info ./my-skill
-              skman.sh info ./my-skill/SKILL.md
+              skman.py info ./my-skill
+              skman.py info --json ./my-skill
+              skman.py info --yaml ./my-skill/SKILL.md
         """),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_info.add_argument('path', help='Path to skill directory or SKILL.md file')
+    p_info.add_argument('--json', action='store_true', help='Output frontmatter as JSON')
+    p_info.add_argument('--yaml', dest='yaml_out', action='store_true', help='Output frontmatter as YAML')
+
+    # --- search ---
+    p_search = sub.add_parser(
+        'search',
+        description=textwrap.dedent("""\
+            Search skills by querying frontmatter with a jq-style expression.
+
+            Discovers all SKILL.md files in the target directory, extracts
+            frontmatter, and runs the jq expression via `yq` against each.
+            Skills where the expression produces non-empty output are returned.
+
+            Requires: yq (pip install yq) and jq on PATH.
+
+            Examples:
+              skman.py search '.description | test("pdf"; "i")'
+              skman.py search '.metadata.tags | index("python")'
+              skman.py search '.license == "MIT"'
+              skman.py search --skills-dir .agents/skills '.name'
+              skman.py search --json '.name, .description'
+        """),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_search.add_argument('expr', help='jq expression to evaluate against frontmatter')
+    p_search.add_argument(
+        '--skills-dir',
+        default='.agents/skills',
+        help='Directory containing skill subdirectories (default: .agents/skills)',
+    )
+    p_search.add_argument('--json', action='store_true', help='Output results as JSON')
 
     # --- generate ---
     p_generate = sub.add_parser(
@@ -1656,9 +1867,9 @@ def build_parser():
             and replaces everything from the auto-generated marker to end of file.
 
             Examples:
-              skman.sh generate
-              skman.sh generate --skills-dir ./custom-skills
-              skman.sh generate --readme ./docs/README.md
+              skman.py generate
+              skman.py generate --skills-dir ./custom-skills
+              skman.py generate --readme ./docs/README.md
         """),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -1692,6 +1903,7 @@ def main():
         'create': cmd_create,
         'validate': cmd_validate,
         'info': cmd_info,
+        'search': cmd_search,
         'generate': cmd_generate,
     }
     dispatch[args.subcommand](args)

@@ -1,6 +1,8 @@
 ---
 name: skman
-description: Introduces the Agent Skills System — a standardized, lightweight, open format for extending AI agent capabilities with specialized knowledge and workflows. Use for scaffolding, validating, and inspecting agent skills (SKILL.md files and other skill's files and directories).
+description: Introduces the Agent Skills System — a standardized, lightweight, open format for extending AI agent capabilities with specialized knowledge and workflows. Use for scaffolding, validating, searching, and inspecting agent skills (SKILL.md files and other skill's files and directories).
+license: Apache-2.0
+compatibility: Requires Python 3.10+ and uv on PATH. Uses PyYAML and yq (pip install yq) for frontmatter parsing and search.
 metadata:
   tags:
     - meta
@@ -12,81 +14,66 @@ metadata:
 
 # skman
 
-Tools and guidelines for creating, validating, and managing agent skills. Use `skman.sh` to scaffold new skill directories, check format compliance, inspect structure, and regenerate the repository README.
+Tools and guidelines for creating, validating, searching, and managing agent skills. Use `skman.py` to scaffold new skill directories, check format compliance, search skills by frontmatter, inspect structure, and regenerate the repository README.
 
 ## Overview
 
 Agent Skills are a lightweight, open format for extending AI agent capabilities with specialized knowledge and workflows. An agent skill is a directory containing a `SKILL.md` file — frontmatter metadata (skill's YAML header) plus concise instructions — optionally accompanied by scripts, references, and assets. This standardized format gives agents new expertise on demand without bloating the context window.
 
-`skman` is the skill for creating, validating, and managing agent skills. It provides four functionalities:
+`skman` is the skill for creating, validating, searching, and managing agent skills. It provides five functionalities:
 
 - **`create`** — Scaffold a new skill directory with SKILL.md, optional scripts, and references
 - **`validate`** — Check a skill against the format specification (frontmatter, naming, structure)
 - **`info`** — Inspect frontmatter, body stats, and heading hierarchy
+- **`search`** — Query skills by frontmatter using jq-style expressions (via `yq`)
 - **`generate`** — Regenerate the repository README.md with skills table and statistics
 
 ## Usage
 
 ```bash
 # Scaffold a new skill
-skman.sh create <name> "<description>"
+skman.py create <name> "<description>"
+skman.py create demo-skill "Dummy example skill" --version 2.4.1
+skman.py create numpy "NumPy skill" --url https://github.com/numpy/numpy/releases/tag/v1.26.0
 
-# Create with version (dir: demo-skill-2-4-1/, H1: # demo-skill 2.4.1)
-skman.sh create demo-skill "Dummy example skill" --version 2.4.1
+# Create with scripts (default: Python PEP 723) or shell wrapper
+skman.py create my-skill "Desc" --with-scripts
+skman.py create my-skill "Desc" --with-scripts --lang bash   # shell + _<name>.py
 
-# Create from URL — auto-extracts name and version
-skman.sh create numpy "NumPy skill" --url https://github.com/numpy/numpy/releases/tag/v1.26.0
-skman.sh create requests "HTTP skill" --url https://pypi.org/project/requests/2.31.0
-skman.sh create serde "Serialization" --url https://crates.io/crates/serde/1.0.190
+# Validate
+skman.py validate ./my-skill
+skman.py validate --strict ./my-skill
+skman.py validate .agents/skills        # all skills
 
-# Create with scripts and references
-skman.sh create my-skill "Desc" --with-scripts --with-references
-skman.sh create my-skill "Desc" --with-scripts --lang python
+# Inspect frontmatter
+skman.py info ./my-skill
+skman.py info --json ./my-skill
 
-# Validate a single skill
-skman.sh validate ./my-skill
-skman.sh validate --strict ./my-skill
+# Search by frontmatter (requires yq)
+skman.py search '.description | test("pdf"; "i")'
+skman.py search '.metadata.tags | index("python")'
+skman.py search --json '.name, .description'
 
-# Validate all skills in a collection directory
-skman.sh validate .agents/skills
-skman.sh validate ./skills-python
+# Regenerate README
+skman.py generate
 
-# Inspect frontmatter and structure
-skman.sh info ./my-skill
-
-# Regenerate README.md Skills Table and Statistics
-skman.sh generate
-
-# Help at every level
-skman.sh --help
-skman.sh create --help
-skman.sh validate --help
-skman.sh info --help
-skman.sh generate --help
+# Help
+skman.py --help
+skman.py search --help
 ```
 
 ### Scaffold New Skill
 
 ```bash
-# Into default location (.agents/skills/my-skill/)
-skman.sh create my-skill "Extracts text from PDF files"
-
-# With version (dir: demo-skill-2-4-1/, H1: # demo-skill 2.4.1)
-skman.sh create demo-skill "Dummy example skill" --version 2.4.1
-
-# From URL — auto-extracts name and version (GitHub, PyPI, npm, crates.io, GitLab, RubyGems)
-skman.sh create numpy "NumPy skill" --url https://github.com/numpy/numpy/releases/tag/v1.26.0
-skman.sh create requests "HTTP skill" --url https://pypi.org/project/requests/2.31.0
-
-# With scripts and references
-skman.sh create my-skill "Desc" --with-scripts --with-references
-skman.sh create my-skill "Desc" --with-scripts --lang python
-
-# Into a specific parent directory
-skman.sh create my-skill "Desc" -o ./custom-skills
+skman.py create my-skill "Extracts text from PDF files"
+skman.py create demo-skill "Dummy example skill" --version 2.4.1
+skman.py create numpy "NumPy skill" --url https://github.com/numpy/numpy/releases/tag/v1.26.0
+skman.py create my-skill "Desc" --with-scripts --with-references
+skman.py create my-skill "Desc" --with-scripts --lang bash   # shell wrapper
+skman.py create my-skill "Desc" -o ./custom-skills
 ```
 
-The script validates name and description before creating files. `--url` extracts name and version from the URL; explicit `--name`/`--version` override extracted values. If the version cannot be extracted via regex, the script prompts for LLM-assisted extraction (set `SKMAN_LLM_RESPONSE='{"version": "X.Y.Z"}'` env var).
+Validates name and description before creating files. `--url` extracts name/version from GitHub, PyPI, npm, crates.io, GitLab, RubyGems URLs. Explicit `--name`/`--version` override extracted values. LLM fallback: set `SKMAN_LLM_RESPONSE='{"version": "X.Y.Z"}'` env var.
 
 ### Validate
 
@@ -94,12 +81,33 @@ Run the built-in validator on a single skill or an entire collection:
 
 ```bash
 # Single skill
-skman.sh validate ./my-skill
-skman.sh validate --strict ./my-skill
+skman.py validate ./my-skill
+skman.py validate --strict ./my-skill
 
 # All skills in a collection directory
-skman.sh validate .agents/skills
-skman.sh validate ./skills-python
+skman.py validate .agents/skills
+skman.py validate ./skills-python
+```
+
+### Search
+
+Query skills by frontmatter using jq-style expressions. Requires `yq` installed (`pip install yq`).
+
+```bash
+# Search by description (case-insensitive)
+skman.py search '.description | test("pdf"; "i")'
+
+# Search by tag
+skman.py search '.metadata.tags | index("python")'
+
+# Search by exact license
+skman.py search '.license == "MIT"'
+
+# List all skill names and descriptions as JSON
+skman.py search --json '.name, .description'
+
+# Search a custom collection
+skman.py search --skills-dir ./skills-python '.name'
 ```
 
 ## Skill Format
@@ -112,9 +120,12 @@ A skill is a directory containing a `SKILL.md` file. Everything else is optional
 <skill-name>/
 ├── SKILL.md              # Required: frontmatter + instructions
 ├── scripts/              # Optional: helper scripts (executed, not loaded into context)
-│   └── <skill-name>.sh   # Bash entry point — referenced in SKILL.md
-
-> Use `skman.sh create --with-scripts` to scaffold the bash wrapper.
+│   └── <skill-name>.py   # Default: Python with PEP 723 shebang (needs uv)
+│   ├── <skill-name>.sh   # Shell mode: bash wrapper (needs python)
+│   └── _<skill-name>.py  # Shell mode: Python impl, no PyPI deps
+│
+> Default: `skman.py create --with-scripts` creates `<name>.py` with PEP 723.
+> Shell mode: `--lang bash` creates `<name>.sh` + `_<name>.py`.
 ├── references/           # Optional: detailed docs loaded on demand (numbered prefix)
 │   └── 01-topic.md
 │   └── 02-abc.md
@@ -171,11 +182,14 @@ Follow these steps in order:
      ```
      Each line: link to the file followed by a dash and a brief topic summary.
 
-4. **Create scripts** — only when the user explicitly requests them. The main script is always `scripts/<skill-name>.sh` (bash). Dependent scripts use whatever language the user specifies (Python, JS/Node/Bun/Deno, Lua, Bash, etc.) — never assume a language. Scripts are **executed** (not loaded into context). The SKILL.md references the `.sh` entry point. Include `--help` at every level. Scaffold with `--with-scripts`.
+4. **Create scripts** — only when the user explicitly requests them. Two conventions:
+   - **Default (Python with dependencies):** `scripts/<name>.py` — single file, PEP 723 shebang (`#!/usr/bin/env -S uv run --script`), direct execution. Requires `uv` on PATH.
+   - **Shell mode (no PyPI deps):** `scripts/<name>.sh` + `scripts/_<name>.py` — bash wrapper delegates to underscore-prefixed Python script directly. Requires only `python` on PATH.
+   Dependent scripts use whatever language the user specifies (Python, JS/Node/Bun/Deno, Lua, Bash, etc.) — never assume a language. Scripts are **executed** (not loaded into context). Include `--help` at every level. Scaffold with `--with-scripts`.
 
 5. **Validate** — run the validation script:
    ```bash
-   skman.sh validate <path-to-skill>
+   skman.py validate <path-to-skill>
    ```
 
 ### Manual Creation
@@ -219,9 +233,10 @@ Checks performed:
 - Challenge each paragraph: "Does this justify its token cost?"
 
 ### Scripting
-- **Main script is always `scripts/<name>.sh`** (bash) — the entry point referenced in SKILL.md
+- **Default entry point is `scripts/<name>.py`** — Python with PEP 723 shebang, direct execution via `uv run --script`. No bash wrapper needed.
+- **Shell mode (on request):** `scripts/<name>.sh` + `scripts/_<name>.py` — bash wrapper delegates to underscore-prefixed Python. Used when the script has no PyPI dependencies (no `uv run` needed).
 - **Dependent scripts use whatever language the user specifies** — Python, JS (Node/Bun/Deno), Lua, Bash, or anything else. Never assume a language; ask the user or wait for their suggestion
-- **Python scripts always use `uv run --script`** — every Python script uses the PEP 723 inline metadata block so `uv run` resolves dependencies automatically. No `pip install`, no `requirements.txt`, no manual venv. The shebang `#!/usr/bin/env -S uv run --script` makes the script directly executable. Declare `requires-python` and `dependencies` inside the `# /// script ... # ///` block. The bash entry point (`scripts/<name>.sh`) delegates via `uv run <script>.py`.
+- **Python scripts always use `uv run --script`** — every Python script uses the PEP 723 inline metadata block so `uv run` resolves dependencies automatically. No `pip install`, no `requirements.txt`, no manual venv. The shebang `#!/usr/bin/env -S uv run --script` makes the script directly executable. Declare `requires-python` and `dependencies` inside the `# /// script ... # ///` block.
   ```python
   #!/usr/bin/env -S uv run --script
   #
@@ -251,7 +266,7 @@ Skills use a four-level loading system:
 
 1. **Metadata** (name + description) — always in context (~100 words). Always visible to the agent.
 2. **SKILL.md body** — loaded on demand (<5000 tokens ideal). Contains the core instructions.
-3. **Scripts** — executed (not loaded into context). Run via `<name>.sh`.
+3. **Scripts** — executed (not loaded into context). Run via `<name>.py` (default) or `<name>.sh` (shell mode).
 4. **References** — loaded as needed (unlimited). Reference files load on demand.
 
 Guidelines:
@@ -277,11 +292,13 @@ Guidelines:
 
 ## Gotchas
 
-- **Never create `scripts/` or `assets/` automatically** — these directories are only created when the user explicitly asks for them. `skman.sh create` does not generate them by default; use `--with-scripts` only on direct user request. Never scaffold scripts or assets without being asked.
-- **Scaffolded `.sh` files may lose execute permission** — `skman.sh create --with-scripts` sets `chmod 0o755`, but editors or git checkouts can strip it. Always verify with `ls -l <name>.sh`; the validator warns if the bit is missing.
+- **Never create `scripts/` or `assets/` automatically** — these directories are only created when the user explicitly asks for them. `skman.py create` does not generate them by default; use `--with-scripts` only on direct user request. Never scaffold scripts or assets without being asked.
+- **Default script is Python, not bash** — `--with-scripts` creates `scripts/<name>.py` with PEP 723 shebang. Use `--lang bash` for the shell wrapper + `_<name>.py` convention.
+- **Scaffolded files may lose execute permission** — `skman.py create --with-scripts` sets `chmod 0o755`, but editors or git checkouts can strip it. Always verify with `ls -l <name>.py`; the validator warns if the bit is missing.
 - **`--strict` turns section warnings into errors** — only `## Overview` produces a warning when missing. `## Usage`, `## Gotchas`, and `## References` are truly optional and never warn (knowledge-only skills often have no Usage section). In strict mode, any warning fails validation.
 - **Frontmatter `name` must match the directory basename exactly** — e.g., `demo-skill-2-4-1/` requires `name: demo-skill-2-4-1`, `skman/` requires `name: skman`. The validator warns on mismatch. Fix by renaming the directory or correcting the frontmatter.
 - **H1 heading must match `# <name>` or `# <base> <version>`** — the validator errors if the first heading doesn't match. For `skman/` it must be `# skman`; for `demo-skill-2-4-1/` it must be `# demo-skill 2.4.1` (version uses dots, not hyphens). The version in the H1 must correspond to the hyphenated version suffix in the directory/frontmatter name.
+- **`search` requires `yq` on PATH** — install via `pip install yq` (also needs `jq`). Without it, `skman.py search` exits with an error.
 - **Reference files are loaded on demand, not into context** — keep SKILL.md self-contained for core instructions; move deep-dive content to `references/NN-topic.md` and link from the body.
 - **PEP 723 block is mandatory for Python scripts** — every Python script must include the `# /// script ... # ///` metadata block. `uv run` depends on it to resolve dependencies. The block goes at the top of the file, after the shebang. Without it, `uv run script.py` runs with no dependency management.
 - **Clone repos locally before studying them** — when a URL is given as source material to study or analyze for writing a skill, check whether it points to a code repository (GitHub, GitLab, Bitbucket, etc.). If so, clone it into a temporary directory first and read files from the local copy. Fetching individual files over the network is expensive in both time and rate limits; a single `git clone` gives you the full tree instantly. Clean up the temp directory after analysis.
