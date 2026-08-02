@@ -1,6 +1,6 @@
 ---
 name: okf
-description: Creates, validates, and manages Open Knowledge Format (OKF v0.2) bundles — directory trees of markdown concept documents with YAML frontmatter. Use when the user needs to create a knowledge bundle from PDF, Office, or web sources; write or update concept documents; ingest markdown into multiple linked concepts; validate OKF conformance; generate index files; or manage cross-links between concepts. Uses direct Python scripts with PEP 723 declaration of dependencies for document conversion and web fetching. OKF documents are linked together so agents can traverse and analyze content without the original source files ever being present again.
+description: Creates, validates, and manages Open Knowledge Format (OKF v0.2) bundles — directory trees of markdown concept documents with YAML frontmatter. Use when the user needs to create a knowledge bundle from PDF, Office, or web sources; write or update concept documents; ingest markdown into multiple linked concepts; validate OKF conformance; generate index files; manage cross-links between concepts; or query bundles by temporal validity, authorship, trust tier, lifecycle status, or any frontmatter field. Uses okf.py for creating, validating, visiting, and searching OKF bundles. OKF documents are linked so agents can traverse and analyze content without original source files.
 metadata:
   tags:
     - meta
@@ -17,12 +17,13 @@ Open Knowledge Format (OKF v0.2) bundle management. OKF represents knowledge as 
 
 OKF turns source documents into a structured, linkable knowledge corpus. The workflow:
 
-1. **Ingest** — read PDFs, Office documents (Word, Excel, PowerPoint), Markdown files, or web pages.
-2. **Extract** — identify concepts, definitions, metrics, and relationships within the source material.
-3. **Produce** — write OKF concept documents with frontmatter that records what each concept is, where it came from, and how much to trust it.
-4. **Link** — connect concepts to each other and back to their sources using standard markdown links and footnotes.
+1. **Ingest** — read PDFs, Office documents, Markdown files, or web pages.
+2. **Extract** — identify concepts, definitions, metrics, and relationships.
+3. **Produce** — write OKF concept documents with frontmatter recording provenance, trust, freshness, lifecycle, and attestation.
+4. **Link** — connect concepts with file-relative markdown links and per-claim footnotes.
+5. **Query** — find concepts by temporal validity, authorship, trust tier, status, type, tags, or any frontmatter field.
 
-A bundle is a self-contained directory tree. It can be distributed as a git repo, a tarball, or a subdirectory. If you can `cat` a file, you can read OKF; if you can `git clone` a repo, you can ship it.
+A bundle is a self-contained directory tree, distributable as a git repo, tarball, or subdirectory.
 
 The format answers five questions that plain markdown cannot:
 
@@ -34,262 +35,174 @@ The format answers five questions that plain markdown cannot:
 
 ## Usage
 
-### Creating a bundle from a single source
+### Creating a bundle from a source
 
-The primary workflow takes one source — a file path or URL — and produces an OKF bundle:
-
-1. **Detect language** — identify the source's natural language from its content. All produced filenames, titles, descriptions, body prose, and `index.md` entries use this language. Exception: `log.md` is always in English.
-2. **Ingest** the source in chunks — convert or fetch incrementally, processing overlapping windows (previous, current, next chunk) so context carries across boundaries.
+1. **Detect language** — identify the source's natural language. All produced filenames, titles, descriptions, body prose, and `index.md` entries use this language. Exception: `log.md` is always in English.
+2. **Ingest** the source in chunks — convert or fetch incrementally, processing overlapping windows so context carries across boundaries.
 3. **Extract** every concept — do not skip or summarize away details. The bundle must be sufficient to recreate the original source (lossy in format, semantically complete).
-4. **Write** one `.md` file per concept with frontmatter (`type` required) and structured body, all in the detected language.
-5. **Cross-link** concepts with file-relative markdown links.
-6. **Generate** `index.md` at the bundle root, in the detected language.
+4. **Write** one `.md` file per concept with frontmatter (`type` required) and structured body.
+5. **Cross-link** concepts with bundle-relative markdown links (recommended form: `/path/to/concept.md`).
+6. **Generate** `index.md` at bundle root.
 
-**Language detection.** Before processing, detect the source's natural language:
+**Chunked ingestion.** Split converted markdown into fixed 500-line chunks. Process each with a sliding window (tail of previous + full current + head of next). Record `location` in `sources` entries for every source reference. After all chunks, deduplicate and merge.
 
-- Read the first ~500 lines of converted content and identify the dominant language.
-- Use it for all produced content: filenames (URL-safe slugs), `title`, `description`, body prose, `index.md` headings and entries.
-- `log.md` is always written in English regardless of source language.
-- Multilingual sources: use the primary language (headings and narrative prose). Mixed-language content may produce concepts in their respective languages.
-
-**Chunked ingestion.** Large sources are processed iteratively:
-
-- Convert the full source to markdown first using direct Python scripts (see below). For PDF, the converter inserts `<!-- page N -->` comments — use these for `location`.
-- **Always read 500 lines at a time** — split into fixed 500-line chunks. Do not skip any parts. Proceed linearly from top to bottom.
-- Process each chunk with a **sliding window**: tail of previous chunk + full current chunk + head of next chunk. This preserves context for concepts spanning boundaries — table headers on one page with data on the next, sentences split across slides, formula references across sheets.
-- Record `location` (pages, slides, sheets, sections) for every source reference.
-- After all chunks, merge extracted concepts — deduplicate by title/content, merge `sources` entries from different chunks.
-
-**Ingest with direct Python scripts.** Use PEP 723 declaration of dependencies — write a self-contained script that declares its own dependencies inline, run with `uv run`. No external skill scripts needed.
+**Ingest with direct Python scripts.** Use PEP 723 inline dependencies with `uv run`:
 
 ```python
 #!/usr/bin/env -S uv run --script
 #
 # /// script
 # requires-python = ">=3.10"
-# dependencies = [
-#     "docling",
-# ]
+# dependencies = ["docling"]
 # ///
 """Convert PDF/Office documents to markdown."""
 import sys
 from docling.document_converter import DocumentConverter
-
-converter = DocumentConverter()
-result = converter.convert(sys.argv[1] if len(sys.argv) > 1 else "./input.pdf")
+result = DocumentConverter().convert(sys.argv[1] if len(sys.argv) > 1 else "./input.pdf")
 print(result.document.export_to_markdown())
 ```
 
-```python
-#!/usr/bin/env -S uv run --script
-#
-# /// script
-# requires-python = ">=3.10"
-# dependencies = [
-#     "requests",
-#     "beautifulsoup4",
-#     "markdownify",
-# ]
-# ///
-"""Fetch a web page and output as markdown."""
-import sys
-import requests
-from bs4 import BeautifulSoup
-from markdownify import markdownify
+### Querying a bundle
 
-url = sys.argv[1] if len(sys.argv) > 1 else "https://example.com"
-resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"})
-resp.raise_for_status()
-soup = BeautifulSoup(resp.text, "html.parser")
-print(markdownify(soup.prettify()))
-```
-
-Save as `convert.py` and `fetch.py` (or any name), then run:
+Find concepts by temporal validity, authorship, trust, or any frontmatter field:
 
 ```bash
-uv run convert.py ./annual-report.pdf > source.md
-uv run fetch.py https://example.com/docs/api > source.md
+# What was valid on a specific date
+okf.py visit --bundle ./bundle --query "valid-on:2022-03-15"
+
+# What was valid for a date range
+okf.py visit --bundle ./bundle --query "valid-between:2020-01-01,2024-06-30"
+
+# What did a human write (not AI)
+okf.py visit --bundle ./bundle --query "written-by:human"
+
+# What did AI write
+okf.py visit --bundle ./bundle --query "written-by:ai"
+
+# What has been reviewed by a human
+okf.py visit --bundle ./bundle --query "reviewed-by:human"
+
+# Trust tier queries
+okf.py visit --bundle ./bundle --query "trust-tier:human-reviewed"
+okf.py visit --bundle ./bundle --query "trust-tier:machine-confirmed"
+okf.py visit --bundle ./bundle --query "trust-tier:unverified"
+
+# Lifecycle queries
+okf.py visit --bundle ./bundle --query "status:stable AND not-stale"
+okf.py visit --bundle ./bundle --query "status:deprecated"
+
+# Type, tags, presence
+okf.py visit --bundle ./bundle --query 'type:"Attested Computation"'
+okf.py visit --bundle ./bundle --query "tag:finance"
+okf.py visit --bundle ./bundle --query "has:sources"
+
+# Date comparisons
+okf.py visit --bundle ./bundle --query "generated.after:2024-01-01"
+okf.py visit --bundle ./bundle --query "source-modified.after:2024-01-01"
+
+# Source author
+okf.py visit --bundle ./bundle --query "source-author:human"
+
+# Text search
+okf.py visit --bundle ./bundle --query "title~:revenue"
+okf.py visit --bundle ./bundle --query "body~:recognition policy"
+
+# Combined queries
+okf.py visit --bundle ./bundle --query "status:stable AND not-stale AND trust-tier:human-reviewed"
+okf.py visit --bundle ./bundle --query "written-by:human OR reviewed-by:human"
+okf.py visit --bundle ./bundle --query "NOT status:deprecated"
+okf.py visit --bundle ./bundle --query "(valid-on:2022-03-15 AND tag:finance) OR tag:legal"
+
+# Output modes
+okf.py visit --bundle ./bundle --query "tag:finance" --output paths       # default: file paths
+okf.py visit --bundle ./bundle --query "tag:finance" --output json        # JSON with frontmatter
+okf.py visit --bundle ./bundle --query "tag:finance" --output frontmatter # YAML frontmatter only
+okf.py visit --bundle ./bundle --query "tag:finance" --output summary     # detailed table
+
+# Structured search (always table or JSON)
+okf.py search --bundle ./bundle --query "status:stable"
+okf.py search --bundle ./bundle --query "status:stable" --json
 ```
 
-Track original source in `sources[].resource` and page/slide/sheet locations in `sources[].location`.
+### Inspecting a concept
+
+```bash
+okf.py info --bundle ./bundle concepts/revenue.md
+okf.py info --bundle ./bundle --json concepts/revenue.md
+okf.py info --bundle ./bundle --validity concepts/revenue.md
+okf.py info --bundle ./bundle --trust-tier concepts/revenue.md
+```
 
 ### Validating a bundle
 
 ```bash
-# Validate entire bundle
 okf.py validate --bundle ./my-bundle
-
-# Validate specific files
 okf.py validate --bundle ./my-bundle concepts/revenue.md
+```
+
+### Scaffolding
+
+```bash
+okf.py create --bundle ./bundle --init                              # root index.md
+okf.py create --bundle ./bundle --type Metric --title "MAU" --description "..."
+okf.py create --bundle ./bundle --type "Attested Computation" --runtime python --param "year:integer:true"
+okf.py create --bundle ./bundle --type Policy --title "Revenue Policy" --tags "finance,policy" --status draft --stale-after 2026-12-31
+```
+
+### Generating index files
+
+```bash
+okf.py generate-index --bundle ./bundle
+okf.py generate-index --bundle ./bundle --dir tables/
+okf.py generate-index --bundle ./bundle --query "status:stable"
+```
+
+### Listing concepts
+
+```bash
+okf.py list --bundle ./bundle
+okf.py list --bundle ./bundle --json
 ```
 
 ### Updating a bundle
 
 When augmenting existing concept documents:
 
-- Preserve all existing frontmatter keys — only `generated` may be dropped (it refreshes on write).
-- Every existing `#` heading must appear in the updated body, in the same order, with the same wording.
-- Extend prose under existing headings, add new bullets to existing lists, or add new headings **after** the existing ones.
+- Preserve all existing frontmatter keys — only `generated` may be dropped (refreshes on write).
+- Every existing `#` heading must appear in the updated body, same order, same wording.
+- Extend prose under existing headings, add new bullets, or add new headings **after** existing ones.
 - Merge `tags` and `sources` — never shrink existing lists.
-- Add new `sources` entries for any new material incorporated.
 
 ## Frontmatter
 
-Every concept is a UTF-8 markdown file with a YAML frontmatter block delimited by `---` at the top, followed by a markdown body.
+Every concept is a UTF-8 markdown file with YAML frontmatter delimited by `---`, followed by a markdown body.
 
 ### Required
 
-- **`type`** — a short string identifying the kind of concept. This is the only always-required key; a concept carrying just `type` is fully conformant.
-
-  Common values: `Document`, `Concept`, `Reference`, `Attested Computation`, `Metric`, `Playbook`. Type values are not registered centrally — producers pick descriptive names, consumers tolerate unknown types gracefully.
-
-  Example — `Document`:
-
-  ```yaml
-  ---
-  type: Document
-  title: Annual Report 2024
-  description: Financial and operational summary for FY2024.
-  resource: /docs/annual-report-2024.pdf
-  tags: [finance, annual-report]
-  ---
-  ```
-
-  Example — `Concept`:
-
-  ```yaml
-  ---
-  type: Concept
-  title: Revenue Recognition Policy
-  description: Revenue recognized when control transfers to the customer, per ASC 606.
-  tags: [finance, revenue, policy]
-  sources:
-    - id: annual-report-2024
-      resource: /docs/annual-report-2024.pdf
-      location: { pages: [12, 13] }
-    - id: accounting-std
-      resource: https://example.com/asc-606
-      location: { section: "Performance Obligations" }
-  ---
-  ```
-
-  Example — `Reference`:
-
-  ```yaml
-  ---
-  type: Reference
-  title: Event Parameter Glossary
-  description: Standardized event parameters used across all analytics tables.
-  resource: https://example.com/docs/event-parameters
-  tags: [analytics, events, glossary]
-  ---
-  ```
-
-  Example — `Metric`:
-
-  ```yaml
-  ---
-  type: Metric
-  title: Monthly Active Users
-  description: Distinct users with at least one event in the month.
-  tags: [analytics, users, mau]
-  sources:
-    - id: product-deck-q3
-      resource: /slides/product-deck-q3.pptx
-      location: { slides: [7-9] }
-  ---
-  ```
-
-  Example — `Playbook`:
-
-  ```yaml
-  ---
-  type: Playbook
-  title: Triage a Data Freshness Alert
-  description: Steps to diagnose and resolve pipeline lag alerts.
-  tags: [oncall, incident]
-  status: stable
-  ---
-  ```
+- **`type`** — short string identifying the concept kind. The only always-required field. Common values: `Concept`, `Reference`, `Metric`, `Playbook`, `Policy`, `Attested Computation`, `Skill`, `Table`, `Dataset`, `API Endpoint`, `Document`. Type values are not registered centrally.
 
 ### Recommended
 
-- **`title`** — human-readable display name. Used verbatim in auto-generated `index.md` files.
-- **`description`** — one sentence summarizing the concept. Used in `index.md`, search snippets, and previews.
-- **`resource`** — a URI or path that uniquely identifies the underlying asset. Absent for concepts that describe abstract ideas rather than physical resources.
-- **`tags`** — a YAML list of short strings for cross-cutting categorization.
+- **`title`** — human-readable display name.
+- **`description`** — one sentence summarizing the concept.
+- **`resource`** — URI or path identifying the underlying asset. Absent for abstract concepts.
+- **`tags`** — YAML list of short strings.
 
-### Provenance: `sources` and `location`
-
-`sources` records the materials a concept derives from, external or internal to the bundle. Each entry is a mapping:
-
-| Field | Required | Description |
-|---|---|---|
-| `resource` | Yes | URI, absolute URL, bundle-relative path, or scope descriptor. |
-| `id` | No | Stable key for per-claim footnote attribution. SHOULD be present when the body cites the source. |
-| `title` | No | Human-readable label for the source. |
-| `author` | No | Who produced the source, using actor convention. An authority signal. |
-| `usage_count` | No | How often the resource was exercised over `usage_window`. A liveness signal. |
-| `last_modified` | No | When the source itself last changed (`YYYY-MM-DD`). A recency signal. |
-| `location` | No | Where within the source the information appeared. See location formats below. |
-
-`usage_window` may appear as a sibling of `sources` to frame every `usage_count` with a `{ from, to }` date range. A single `sources` entry may carry its own `usage_window` to override the shared one. Per-source credibility signals (`author`, `usage_count`, `last_modified`) may also appear on individual `sources` entries.
-
-The `location` field is a mapping that varies by source type:
+### Provenance
 
 ```yaml
 sources:
-  - id: annual-report-2024
-    resource: /docs/annual-report-2024.pdf
-    title: Annual Report 2024
-    location: { pages: [12, 13, 15-18] }
-
-  - id: product-deck-q3
-    resource: /slides/product-deck-q3.pptx
-    title: Q3 Product Deck
-    location: { slides: [7-12] }
-
-  - id: financials-sheet
-    resource: /data/financials.xlsx
-    title: Financial Data
-    location: { sheet: "Revenue", range: "A1:D50" }
-
-  - id: api-docs
-    resource: https://example.com/docs/api
-    title: API Documentation
-    location: { section: "Authentication" }
+  - id: rev-policy
+    resource: https://wiki.acme/finance/revenue-recognition
+    title: Revenue recognition policy
+    author: human:jsmith@acme
+    last_modified: 2026-06-15
+usage_window: { from: 2026-06-01, to: 2026-06-30 }
 ```
 
-| Source type | Location format |
-|---|---|
-| PDF | `{ pages: [3] }` or `{ pages: [3-5, 8] }` |
-| PowerPoint | `{ slides: [12-15] }` |
-| Excel | `{ sheet: "Revenue", range: "A1:D50" }` |
-| Word | `{ pages: [4-6] }` or `{ section: "Introduction" }` |
-| Web / Markdown | `{ section: "## Authentication" }` or `{ heading: "API Keys" }` |
+Each `sources` entry: `resource` (required), `id`, `title`, `author`, `usage_count`, `last_modified`. `usage_window` is a sibling of `sources`. Per-claim attribution uses markdown footnotes keyed to `sources[].id`.
 
-When the location is unknown, omit `location` entirely.
-
-**Per-claim attribution** — to attribute a specific claim in the body, end the sentence with a markdown footnote whose label matches a `sources[].id`:
-
-```markdown
-Revenue recognized per the finance policy.[^rev-policy]
-
-[^rev-policy]: Revenue recognition policy
-```
-
-The footnote label is the join key into `sources`; consumers resolve attribution through the matching entry, not by parsing the footnote prose.
-
-### Trust: `generated` and `verified`
-
-`generated` records how the current content was produced. `verified` records who or what has confirmed it. They are kept distinct because who *wrote* a concept need not be who *confirmed* it.
-
-| Field | Required | Description |
-|---|---|---|
-| `generated.by` | Yes (within `generated`) | Actor that produced the content. |
-| `generated.at` | No | ISO 8601 datetime of last meaningful change. |
-| `verified[].by` | Yes (within entry) | Actor that verified the content. |
-| `verified[].at` | Yes (within entry) | ISO 8601 datetime of the verification. |
+### Trust
 
 ```yaml
 generated: { by: okf_agent/claude-sonnet-4-5, at: 2025-07-15T14:30:00Z }
@@ -298,173 +211,40 @@ verified:
   - { by: process:nightly-check, at: 2025-07-17T02:00:00Z }
 ```
 
-A single verifier may be written as a bare mapping without the list dash: `verified: { by: human:alice, at: ... }`.
+Trust tiers: no `verified` → **unverified**; only non-`human:` actors → **machine-confirmed**; any `human:<id>` → **human-reviewed**.
 
-**Trust tiers** are derived from `verified`:
+Actor convention: `<producer>/<version>` for agents, `human:<id>` for people, `process:<id>` for automated processes.
 
-- No `verified` key → **unverified**
-- `verified` by non-`human:` actors only → **machine-confirmed**
-- `verified` by a `human:<id>` actor → **human-reviewed**
+### Lifecycle
 
-**Actor convention** for `generated.by` and `verified[].by`:
+```yaml
+status: stable        # draft | stable | deprecated (default: stable)
+stale_after: 2026-12-31
+```
 
-- `<producer>/<version>` for agents and tools — e.g., `okf_agent/claude-sonnet-4-5`
-- `human:<id>` for people — e.g., `human:alice`
-- `process:<id>` for automated processes — e.g., `process:nightly-check`
-
-### Lifecycle: `status` and `stale_after`
-
-| Field | Required | Values | Default |
-|---|---|---|---|
-| `status` | No | `draft`, `stable`, `deprecated` | `stable` |
-| `stale_after` | No | `YYYY-MM-DD` absolute date | never stale |
-
-- `draft` — not yet reviewed; possibly incomplete.
-- `stable` — default when `status` is absent; ready for consumption.
-- `deprecated` — kept for links and history; no longer current.
-
-`stale_after` is an absolute date. A concept is stale when `today >= stale_after`.
+Concept is stale when `today >= stale_after`.
 
 ### Attested Computation
 
-An Attested Computation concept carries not just what a value *means* but a sanctioned way to *compute* it. The contract lives in frontmatter:
-
-| Field | Required | Description |
-|---|---|---|
-| `runtime` | Yes | How to run the computation. Example values: `python`, `javascript`, `typescript`, `bash`, `sqlite`, `html`, `css`, `json`, `yaml`, `toml`. |
-| `parameters` | No | List of typed, named holes: `{ name, type, required }`. |
-| `computation` | No | Path to an external file holding the computation. Absent → inline body fence under `# Computation`. |
-| `executor.resource` | No | Run instructions or code. A runner follows it. |
-| `executor.receipt` | No | Fields a run must return — the evidence the attester inspects. |
-| `attester.resource` | No | Deterministic (no-LLM) code that takes a receipt and returns a verdict. |
-
-A computation is its own standalone concept; other concepts link to it.
-
-Example — Python:
-
 ```yaml
----
 type: Attested Computation
-title: Monthly active users
 runtime: python
 parameters:
   - { name: month, type: string, required: true }
-  - { name: data_path, type: string, required: true }
 executor:
   resource: references/executors/run-python.sh
   receipt: [exit_code, stdout, stderr]
 attester:
   resource: references/attesters/mau-check.py
----
-
-# Computation
-
-    import json
-    def compute(month, data_path):
-        with open(data_path) as f:
-            events = json.load(f)
-        return len({e["user_id"] for e in events if e["ts"].startswith(month)})
 ```
-
-Example — SQLite:
-
-```yaml
----
-type: Attested Computation
-title: Revenue by category
-runtime: sqlite
-parameters:
-  - { name: db_path, type: string, required: true }
----
-
-# Computation
-
-    SELECT category, SUM(amount) AS revenue FROM orders GROUP BY category ORDER BY revenue DESC
-```
-
-Other runtimes (`bash`, `javascript`, `typescript`, `html`, `css`, `json`, `yaml`, `toml`) follow the same pattern — `runtime` names the language, `# Computation` holds the code.
-
-### Extensions
-
-Producers may include any additional keys. Consumers must not reject documents with unrecognized fields and should preserve unknown keys when round-tripping.
-
-### Conformance
-
-A bundle is conformant with OKF v0.2 if:
-
-1. Every non-reserved `.md` file contains a parseable YAML frontmatter block.
-2. Every frontmatter block contains a non-empty `type` field.
-3. Reserved filenames (`index.md`, `log.md`) follow their defined structure when present.
-
-Consumers must not reject a bundle because of missing optional fields, unknown `type` values, unknown additional keys, broken cross-links, or missing `index.md` files.
-
-## Body Conventions
-
-The body is standard markdown. There are no required body sections. The following headings have conventional meaning:
-
-| Heading | Purpose |
-|---|---|
-| `# Schema` | Structured description of fields, columns, or properties. |
-| `# Examples` | Concrete usage examples, often as fenced code blocks. |
-| `# Computation` | The sanctioned computation of an Attested Computation. |
-| `# Metrics` | Metrics derived from this concept, linked to reference docs. |
-| `# Joins` | Relationships to other concepts, linked to reference docs. |
-| `# Dimensions` | Groupable or filterable attributes. |
-
-Producers should favor structural markdown (headings, lists, tables, fenced code blocks) over freeform prose — structure aids both human reading and agent retrieval.
-
-Do not add a `# Citations` section; provenance lives in the `sources` frontmatter with per-claim footnotes.
-
-## Bundle Structure
-
-A bundle is a directory tree of markdown files:
-
-```
-path/to/bundle/
-  index.md                      # Optional. Directory listing.
-  log.md                        # Optional. Update history (always English).
-  <concept>.md                  # A concept at the bundle root.
-  <subdirectory>/
-    index.md
-    <concept>.md
-    references/
-      <reference>.md
-```
-
-**Reserved filenames** — `index.md` and `log.md` have defined meaning and must not be used for concept documents.
-
-**`index.md`** — enumerates directory contents. No frontmatter (except bundle root may carry `okf_version: "0.2"`). Body uses sections with bulleted lists:
-
-```markdown
-# Documents
-
-* [Annual Report 2024](annual-report-2024.md) — Financial and operational summary for FY2024.
-* [Revenue computation](references/metrics/revenue.md) — Sanctioned revenue calculation.
-```
-
-**`log.md`** — date-grouped change entries, newest first. Always written in English.
-
-```markdown
-# Directory Update Log
-
-## 2025-07-15
-* **Creation**: Established bundle from annual-report-2024.pdf.
-```
-
-## Cross-linking
-
-Concepts link to each other using file-relative markdown links — never absolute paths beginning with `/`.
-
-Rules: one link per concept mention per section; do not link from headers, code blocks, or field listings; do not link a document to itself; consumers tolerate broken links.
 
 ## Gotchas
 
-- **Use direct Python scripts, not skill scripts** — document conversion and web fetching use PEP 723 inline dependency blocks with `uv run`, not `markdown.sh` or `webfetch.sh`. Write self-contained scripts that declare their own dependencies.
-- **PEP 723 block is mandatory** — every Python script must include the `# /// script ... # ///` metadata block so `uv run` resolves dependencies. Without it, the script runs with no dependency management.
-- **Always use file-relative paths for cross-links** — never absolute paths beginning with `/`.
-- **`type` is the only required frontmatter field** — `type: Concept` alone is fully conformant.
-- **`location` varies by source type** — `pages` for PDF, `slides` for PPTX, `sheet`+`range` for XLSX, `section`/`heading` for web. Omit when unknown.
-- **`sources` lives in frontmatter, not the body** — no `# Citations` body sections. Use `sources` + per-claim footnotes.
+- **Use direct Python scripts, not skill scripts** — document conversion uses PEP 723 inline dependencies with `uv run`, not external scripts.
+- **PEP 723 block is mandatory** — every Python script must include the `# /// script ... # ///` metadata block.
+- **Bundle-relative paths recommended** — use `/path/to/concept.md` (bundle-relative) for cross-links, not relative paths. Both forms are valid; bundle-relative is stable when documents move.
+- **`type` is the only required field** — `type: Concept` alone is fully conformant.
+- **`sources` lives in frontmatter** — no `# Citations` body sections. Use `sources` + per-claim footnotes.
 - **Footnote labels must match `sources[].id`** — the label is a join key.
 - **`generated` and `verified` are distinct** — who *wrote* need not be who *confirmed*.
 - **Actor convention keys off `human:` prefix** — trust tiers derive from `human:<id>` in `verified`.
@@ -472,3 +252,14 @@ Rules: one link per concept mention per section; do not link from headers, code 
 - **Attested Computations are standalone** — do not embed in other types.
 - **`index.md` has no frontmatter** — except bundle root may carry `okf_version: "0.2"`.
 - **`log.md` is always in English** — all other bundle files follow the source's detected language.
+- **YAML auto-parses dates** — `stale_after: 2026-12-31` becomes a `datetime.date` object, not a string. `okf.py` handles both string and native types.
+- **`okf.py visit` requires `--query`** — always provide a query expression. Use `status:stable` to match all stable concepts.
+- **Quotes for multi-word values** — use `type:"Attested Computation"` (quotes) not `type:Attested Computation`.
+
+## References
+
+- [01-frontmatter](references/01-frontmatter.md) — Complete field reference: core, provenance, trust, lifecycle, extensions
+- [02-attested-computations](references/02-attested-computations.md) — Attested computation contract, runtimes, executor/attester flow
+- [03-bundle-structure](references/03-bundle-structure.md) — index.md, log.md, cross-linking, paths, body conventions
+- [04-query-language](references/04-query-language.md) — Full query expression reference with examples
+- [05-conformance](references/05-conformance.md) — Conformance rules, versioning, v0.1 migration
