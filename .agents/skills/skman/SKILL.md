@@ -41,6 +41,7 @@ skman.sh create serde "Serialization" --url https://crates.io/crates/serde/1.0.1
 
 # Create with scripts and references
 skman.sh create my-skill "Desc" --with-scripts --with-references
+skman.sh create my-skill "Desc" --with-scripts --lang python
 
 # Validate a single skill
 skman.sh validate ./my-skill
@@ -79,6 +80,7 @@ skman.sh create requests "HTTP skill" --url https://pypi.org/project/requests/2.
 
 # With scripts and references
 skman.sh create my-skill "Desc" --with-scripts --with-references
+skman.sh create my-skill "Desc" --with-scripts --lang python
 
 # Into a specific parent directory
 skman.sh create my-skill "Desc" -o ./custom-skills
@@ -219,6 +221,15 @@ Checks performed:
 ### Scripting
 - **Main script is always `scripts/<name>.sh`** (bash) — the entry point referenced in SKILL.md
 - **Dependent scripts use whatever language the user specifies** — Python, JS (Node/Bun/Deno), Lua, Bash, or anything else. Never assume a language; ask the user or wait for their suggestion
+- **Python scripts always use `uv run --script`** — every Python script uses the PEP 723 inline metadata block so `uv run` resolves dependencies automatically. No `pip install`, no `requirements.txt`, no manual venv. The shebang `#!/usr/bin/env -S uv run --script` makes the script directly executable. Declare `requires-python` and `dependencies` inside the `# /// script ... # ///` block. The bash entry point (`scripts/<name>.sh`) delegates via `uv run <script>.py`.
+  ```python
+  #!/usr/bin/env -S uv run --script
+  #
+  # /// script
+  # requires-python = ">=3.12"
+  # dependencies = ["PyYAML", "requests"]
+  # ///
+  ```
 - Any libraries, frameworks, or dependencies are allowed when the user explicitly requests them
 
 ### Match Specificity to Task Fragility
@@ -272,4 +283,9 @@ Guidelines:
 - **Frontmatter `name` must match the directory basename exactly** — e.g., `demo-skill-2-4-1/` requires `name: demo-skill-2-4-1`, `skman/` requires `name: skman`. The validator warns on mismatch. Fix by renaming the directory or correcting the frontmatter.
 - **H1 heading must match `# <name>` or `# <base> <version>`** — the validator errors if the first heading doesn't match. For `skman/` it must be `# skman`; for `demo-skill-2-4-1/` it must be `# demo-skill 2.4.1` (version uses dots, not hyphens). The version in the H1 must correspond to the hyphenated version suffix in the directory/frontmatter name.
 - **Reference files are loaded on demand, not into context** — keep SKILL.md self-contained for core instructions; move deep-dive content to `references/NN-topic.md` and link from the body.
+- **PEP 723 block is mandatory for Python scripts** — every Python script must include the `# /// script ... # ///` metadata block. `uv run` depends on it to resolve dependencies. The block goes at the top of the file, after the shebang. Without it, `uv run script.py` runs with no dependency management.
 - **Clone repos locally before studying them** — when a URL is given as source material to study or analyze for writing a skill, check whether it points to a code repository (GitHub, GitLab, Bitbucket, etc.). If so, clone it into a temporary directory first and read files from the local copy. Fetching individual files over the network is expensive in both time and rate limits; a single `git clone` gives you the full tree instantly. Clean up the temp directory after analysis.
+
+## References
+
+- [01-python-scripts](references/01-python-scripts.md) — PEP 723 inline dependencies, `uv run --script`, shebang patterns

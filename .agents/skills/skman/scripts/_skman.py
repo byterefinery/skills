@@ -916,26 +916,78 @@ def cmd_create(args):
     with open(skill_md_path, 'w') as f:
         f.write(content)
 
-    # Optionally create scripts directory (bash wrapper only — no assumed implementation)
+    # Optionally create scripts directory
     if args.with_scripts:
         scripts_dir = os.path.join(skill_dir, 'scripts')
         os.makedirs(scripts_dir, exist_ok=True)
 
-        # Bash wrapper (entry point)
-        sh_path = os.path.join(scripts_dir, f'{name}.sh')
-        with open(sh_path, 'w') as f:
-            f.write(f'#!/usr/bin/env bash\n')
-            f.write(f'# {name} — {description}\n')
-            f.write(f'set -euo pipefail\n')
-            f.write(f'\n')
-            f.write(f'SCRIPT_DIR="$(cd "$(dirname "${{BASH_SOURCE[0]}}")" && pwd)"\n')
-            f.write(f'\n')
-            f.write(f'# TODO: implement {name}\n')
-            f.write(f'echo "Usage: {name}.sh <subcommand> [args...]"\n')
-            f.write(f'exit 1\n')
-        os.chmod(sh_path, 0o755)
+        lang = getattr(args, 'lang', None)
 
-        print(f"create: created bash wrapper at {sh_path}")
+        if lang == 'python':
+            # Python script with PEP 723 inline dependencies
+            py_path = os.path.join(scripts_dir, f'{name}.py')
+            with open(py_path, 'w') as f:
+                f.write(textwrap.dedent(f'''
+                    #!/usr/bin/env -S uv run --script
+                    #
+                    # /// script
+                    # requires-python = ">=3.12"
+                    # dependencies = [
+                    #     # add dependencies here
+                    # ]
+                    # ///
+
+                    """{name} — {description}
+
+                    Usage:
+                        {name}.py <subcommand> [args...]
+                    """
+
+                    import argparse
+                    import sys
+
+
+                    def main():
+                        parser = argparse.ArgumentParser(prog="{name}")
+                        parser.parse_args()
+                        # TODO: implement {name}
+
+
+                    if __name__ == "__main__":
+                        main()
+                    ''').lstrip('\n'))
+            os.chmod(py_path, 0o755)
+            print(f"create: created Python script at {py_path}")
+
+            # Bash wrapper that delegates to Python via uv run
+            sh_path = os.path.join(scripts_dir, f'{name}.sh')
+            with open(sh_path, 'w') as f:
+                f.write(f'#!/usr/bin/env bash\n')
+                f.write(f'# {name} — {description}\n')
+                f.write(f'set -euo pipefail\n')
+                f.write(f'\n')
+                f.write(f'SCRIPT_DIR="$(cd "$(dirname "${{BASH_SOURCE[0]}}")" && pwd)"\n')
+                f.write(f'\n')
+                f.write(f'exec uv run "$SCRIPT_DIR/{name}.py" "$@"\n')
+            os.chmod(sh_path, 0o755)
+            print(f"create: created bash wrapper at {sh_path}")
+
+        else:
+            # Bash wrapper only (no assumed implementation)
+            sh_path = os.path.join(scripts_dir, f'{name}.sh')
+            with open(sh_path, 'w') as f:
+                f.write(f'#!/usr/bin/env bash\n')
+                f.write(f'# {name} — {description}\n')
+                f.write(f'set -euo pipefail\n')
+                f.write(f'\n')
+                f.write(f'SCRIPT_DIR="$(cd "$(dirname "${{BASH_SOURCE[0]}}")" && pwd)"\n')
+                f.write(f'\n')
+                f.write(f'# TODO: implement {name}\n')
+                f.write(f'echo "Usage: {name}.sh <subcommand> [args...]"\n')
+                f.write(f'exit 1\n')
+            os.chmod(sh_path, 0o755)
+
+            print(f"create: created bash wrapper at {sh_path}")
 
     # Optionally create references directory
     if args.with_references:
@@ -1497,6 +1549,7 @@ def build_parser():
             Examples:
               skman.sh create my-skill "Does X and Y"
               skman.sh create my-skill "Desc" --with-scripts --with-references
+              skman.sh create my-skill "Desc" --with-scripts --lang python
               skman.sh create my-skill "Desc" -o ./custom-skills
               skman.sh create demo-skill "Dummy example skill" --version 2.4.1
               skman.sh create numpy "NumPy skill" --url https://github.com/numpy/numpy/releases/tag/v1.26.0
@@ -1526,6 +1579,12 @@ def build_parser():
         '--with-scripts',
         action='store_true',
         help='Also create scripts/ directory with bash wrapper',
+    )
+    p_create.add_argument(
+        '--lang',
+        default=None,
+        choices=['python'],
+        help='Language for the dependent script (e.g. python). Scaffolded script uses uv run --script with PEP 723 inline dependencies.',
     )
     p_create.add_argument(
         '--with-references',
