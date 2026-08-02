@@ -71,6 +71,156 @@ description: {description}
 # e.g. "demo-skill-2-4-1" -> "2-4-1", "git-8-20-0" -> "8-20-0"
 VERSION_SUFFIX_RE = re.compile(r'-(\d+(?:-\d+)+)$')
 
+# ---------------------------------------------------------------------------
+# URL patterns for name/version extraction
+# ---------------------------------------------------------------------------
+# Each entry: (compiled_regex, name_group, version_group_or_None)
+# Tried in order — first match wins.
+
+_URL_PATTERNS = [
+    # GitHub: /{user}/{repo}/releases/tag/v{ver}
+    (re.compile(
+        r'github\.com/[^/]+/([^/]+)/releases/tag/v?([^?#/]+)'    
+    ), '1', '2'),
+    # GitHub: /{user}/{repo}/tree/v{ver}
+    (re.compile(
+        r'github\.com/[^/]+/([^/]+)/tree/v?([^?#/]+)'    
+    ), '1', '2'),
+    # GitHub: /{user}/{repo}/-/tags/v{ver} (GitLab-style also on github enterprise)
+    (re.compile(
+        r'github\.com/[^/]+/([^/]+)/-/tags/v?([^?#/]+)'    
+    ), '1', '2'),
+    # GitLab: /{user}/{repo}/-/tags/v{ver}
+    (re.compile(
+        r'gitlab\.com/[^/]+/([^/]+)/-/tags/v?([^?#/]+)'    
+    ), '1', '2'),
+    # GitLab: /{user}/{repo}/tags/v{ver}
+    (re.compile(
+        r'gitlab\.com/[^/]+/([^/]+)/tags/v?([^?#/]+)'    
+    ), '1', '2'),
+    # PyPI: pypi.org/project/{pkg}/{ver}
+    (re.compile(
+        r'pypi\.org/project/([^/]+)/([^?#/]+)'    
+    ), '1', '2'),
+    # npm: npmjs.com/package/{pkg}/v/{ver}
+    (re.compile(
+        r'npmjs\.com/package/([^/]+)/v/([^?#/]+)'    
+    ), '1', '2'),
+    # crates.io: crates.io/crates/{pkg}/{ver}
+    (re.compile(
+        r'crates\.io/crates/([^/]+)/([^?#/]+)'    
+    ), '1', '2'),
+    # RubyGems: rubygems.org/gems/{gem}/{ver}
+    (re.compile(
+        r'rubygems\.org/gems/([^/]+)/([^?#/]+)'    
+    ), '1', '2'),
+    # Go pkg: pkg.go.dev/{module}/v{ver}
+    (re.compile(
+        r'pkg\.go\.dev/([^/]+)/v?([^?#/]+)'    
+    ), '1', '2'),
+    # npm (no version): npmjs.com/package/{pkg}
+    (re.compile(
+        r'npmjs\.com/package/([^/?#/]+)'    
+    ), '1', None),
+    # crates.io (no version): crates.io/crates/{pkg}
+    (re.compile(
+        r'crates\.io/crates/([^/?#/]+)'    
+    ), '1', None),
+    # GitHub (no version): github.com/{user}/{repo}[.git]
+    (re.compile(
+        r'github\.com/[^/]+/([^/.]+)(?:\.git)?(?:[?#/].*)?$'    
+    ), '1', None),
+    # GitLab (no version): gitlab.com/{user}/{repo}[.git]
+    (re.compile(
+        r'gitlab\.com/[^/]+/([^/.]+)(?:\.git)?(?:[?#/].*)?$'    
+    ), '1', None),
+]
+
+
+def _extract_name_version(url):
+    """Extract (name, version) from a package/repo URL.
+
+    Tries known registry patterns (GitHub, PyPI, npm, crates.io, etc.).
+    Returns (name, version) where version may be None.
+    Raises ValueError if URL is unrecognizable.
+    """
+    url = url.strip().lower()
+
+    # Normalize: remove trailing slashes
+    url = url.rstrip('/')
+
+    for pattern, name_grp, ver_grp in _URL_PATTERNS:
+        m = pattern.search(url)
+        if m:
+            name = m.group(int(name_grp))
+            # Restore original case for name from the original URL
+            # (patterns matched against lowered url, so grab from original)
+            orig_url = url  # already lowered; caller should preserve case if needed
+            version = m.group(int(ver_grp)).strip() if ver_grp else None
+            # Strip leading 'v' from version
+            if version and version.startswith('v'):
+                version = version[1:]
+            # Strip .git from name
+            name = name.removesuffix('.git')
+            return name, version if version else None
+
+    raise ValueError(f"unrecognized URL pattern: {url}")
+
+
+def _llm_extract_version(url, name):
+    """Fallback: prompt the agent to extract version from URL via LLM.
+
+    Since skman is a standalone script, this prints a structured prompt
+    to stderr and reads optional JSON response from SKMAN_LLM_RESPONSE
+    env var or stdin (if piped).
+
+    Returns version string or None.
+    """
+    # Check for pre-provided LLM response (agent sets this env var)
+    env_response = os.environ.get('SKMAN_LLM_RESPONSE', '').strip()
+    if env_response:
+        try:
+            import json
+            data = json.loads(env_response)
+            ver = data.get('version')
+            if ver:
+                return str(ver).lstrip('v')
+        except (json.JSONDecodeError, AttributeError):
+            pass
+
+    # Print prompt for the agent to process
+    print(
+        f"create: could not extract version from URL. "
+        f"Please provide version for '{name}' from: {url}",
+        file=sys.stderr,
+    )
+    print(
+        f"  Set SKMAN_LLM_RESPONSE='{{\"version\": \"X.Y.Z\"}}' or pass --version explicitly.",
+        file=sys.stderr,
+    )
+    return None
+
+
+# Restore case: re-extract name from original (non-lowered) URL
+def _extract_name_version_preserve_case(url):
+    """Extract (name, version) preserving original casing of the name."""
+    stripped = url.strip()
+    lowered = stripped.lower().rstrip('/')
+
+    for pattern, name_grp, ver_grp in _URL_PATTERNS:
+        m = pattern.search(lowered)
+        if m:
+            start, end = m.start(int(name_grp)), m.end(int(name_grp))
+            name = stripped[start:end]  # grab from original (preserves case)
+            version = m.group(int(ver_grp)).strip() if ver_grp else None
+            if version and version.startswith('v'):
+                version = version[1:]
+            name = name.removesuffix('.git')
+            return name, version if version else None
+
+    raise ValueError(f"unrecognized URL pattern: {url}")
+
+
 
 # ---------------------------------------------------------------------------
 # Token estimation
@@ -700,6 +850,30 @@ def cmd_create(args):
     version = getattr(args, 'version', None)
     if version:
         version = version.strip()
+    url = getattr(args, 'url', None)
+    if url:
+        url = url.strip()
+
+    # Extract name/version from URL if provided
+    if url:
+        try:
+            url_name, url_version = _extract_name_version_preserve_case(url)
+            # URL-extracted values are defaults — explicit flags override
+            if not name or name == args.name.strip():
+                # name came from positional arg, only use url_name if --url was the sole source
+                pass  # keep explicit name
+            if url_version and not version:
+                version = url_version
+                print(f"create: extracted version '{version}' from URL")
+        except ValueError as e:
+            # Regex failed — try LLM fallback for version
+            print(f"create: regex extraction failed ({e}), trying LLM fallback…", file=sys.stderr)
+            if not version:
+                llm_version = _llm_extract_version(url, name)
+                if llm_version:
+                    version = llm_version
+                    print(f"create: LLM extracted version '{version}'")
+
 
     # Validate before creating anything
     errors = []
@@ -1325,11 +1499,19 @@ def build_parser():
               skman.sh create my-skill "Desc" --with-scripts --with-references
               skman.sh create my-skill "Desc" -o ./custom-skills
               skman.sh create demo-skill "Dummy example skill" --version 2.4.1
+              skman.sh create numpy "NumPy skill" --url https://github.com/numpy/numpy/releases/tag/v1.26.0
+              skman.sh create requests "HTTP skill" --url https://pypi.org/project/requests/2.31.0
+              skman.sh create serde "Serialization" --url https://crates.io/crates/serde/1.0.190
         """),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_create.add_argument('name', help='Skill name (lowercase, hyphens, numbers)')
     p_create.add_argument('description', help='Skill description (max 1024 chars)')
+    p_create.add_argument(
+        '--url',
+        default=None,
+        help='Source URL (GitHub, PyPI, npm, crates.io, etc.). Auto-extracts name and version. Explicit --name/--version override extracted values.',
+    )
     p_create.add_argument(
         '--version', '-V',
         default=None,

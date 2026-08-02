@@ -34,6 +34,11 @@ skman.sh create <name> "<description>"
 # Create with version (dir: demo-skill-2-4-1/, H1: # demo-skill 2.4.1)
 skman.sh create demo-skill "Dummy example skill" --version 2.4.1
 
+# Create from URL — auto-extracts name and version
+skman.sh create numpy "NumPy skill" --url https://github.com/numpy/numpy/releases/tag/v1.26.0
+skman.sh create requests "HTTP skill" --url https://pypi.org/project/requests/2.31.0
+skman.sh create serde "Serialization" --url https://crates.io/crates/serde/1.0.190
+
 # Create with scripts and references
 skman.sh create my-skill "Desc" --with-scripts --with-references
 
@@ -68,6 +73,10 @@ skman.sh create my-skill "Extracts text from PDF files"
 # With version (dir: demo-skill-2-4-1/, H1: # demo-skill 2.4.1)
 skman.sh create demo-skill "Dummy example skill" --version 2.4.1
 
+# From URL — auto-extracts name and version (GitHub, PyPI, npm, crates.io, GitLab, RubyGems)
+skman.sh create numpy "NumPy skill" --url https://github.com/numpy/numpy/releases/tag/v1.26.0
+skman.sh create requests "HTTP skill" --url https://pypi.org/project/requests/2.31.0
+
 # With scripts and references
 skman.sh create my-skill "Desc" --with-scripts --with-references
 
@@ -75,7 +84,7 @@ skman.sh create my-skill "Desc" --with-scripts --with-references
 skman.sh create my-skill "Desc" -o ./custom-skills
 ```
 
-The script validates name and description before creating files.
+The script validates name and description before creating files. `--url` extracts name and version from the URL; explicit `--name`/`--version` override extracted values. If the version cannot be extracted via regex, the script prompts for LLM-assisted extraction (set `SKMAN_LLM_RESPONSE='{"version": "X.Y.Z"}'` env var).
 
 ### Validate
 
