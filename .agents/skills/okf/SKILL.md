@@ -1,6 +1,6 @@
 ---
 name: okf
-description: Creates, validates, and manages Open Knowledge Format (OKF v0.2) bundles — directory trees of markdown concept documents with YAML frontmatter. Use when the user needs to create a knowledge bundle from PDF, Office, or web sources; write or update concept documents; ingest markdown into multiple linked concepts; validate OKF conformance; generate index files; or manage cross-links between concepts. Relies on `markdown` skill for PDF/Office/Excel/PPT conversion and `webfetch` for URL fetching. OKF documents are linked together so agents can traverse and analyze content without the original source files ever being present again.
+description: Creates, validates, and manages Open Knowledge Format (OKF v0.2) bundles — directory trees of markdown concept documents with YAML frontmatter. Use when the user needs to create a knowledge bundle from PDF, Office, or web sources; write or update concept documents; ingest markdown into multiple linked concepts; validate OKF conformance; generate index files; or manage cross-links between concepts. Uses direct Python scripts with PEP 723 declaration of dependencies for document conversion and web fetching. OKF documents are linked together so agents can traverse and analyze content without the original source files ever being present again.
 metadata:
   tags:
     - meta
@@ -54,17 +54,61 @@ The primary workflow takes one source — a file path or URL — and produces an
 
 **Chunked ingestion.** Large sources are processed iteratively:
 
-- Convert the full source to markdown first (`markdown.sh to-md <file>` or `webfetch.sh <url>`). For PDF, the converter inserts `<!-- page N -->` comments — use these for `location`.
+- Convert the full source to markdown first using direct Python scripts (see below). For PDF, the converter inserts `<!-- page N -->` comments — use these for `location`.
 - **Always read 500 lines at a time** — split into fixed 500-line chunks. Do not skip any parts. Proceed linearly from top to bottom.
 - Process each chunk with a **sliding window**: tail of previous chunk + full current chunk + head of next chunk. This preserves context for concepts spanning boundaries — table headers on one page with data on the next, sentences split across slides, formula references across sheets.
 - Record `location` (pages, slides, sheets, sections) for every source reference.
 - After all chunks, merge extracted concepts — deduplicate by title/content, merge `sources` entries from different chunks.
 
-**Ingest examples:**
+**Ingest with direct Python scripts.** Use PEP 723 declaration of dependencies — write a self-contained script that declares its own dependencies inline, run with `uv run`. No external skill scripts needed.
+
+```python
+#!/usr/bin/env -S uv run --script
+#
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "docling",
+# ]
+# ///
+"""Convert PDF/Office documents to markdown."""
+import sys
+from docling.document_converter import DocumentConverter
+
+converter = DocumentConverter()
+result = converter.convert(sys.argv[1] if len(sys.argv) > 1 else "./input.pdf")
+print(result.document.export_to_markdown())
+```
+
+```python
+#!/usr/bin/env -S uv run --script
+#
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "requests",
+#     "beautifulsoup4",
+#     "markdownify",
+# ]
+# ///
+"""Fetch a web page and output as markdown."""
+import sys
+import requests
+from bs4 import BeautifulSoup
+from markdownify import markdownify
+
+url = sys.argv[1] if len(sys.argv) > 1 else "https://example.com"
+resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"})
+resp.raise_for_status()
+soup = BeautifulSoup(resp.text, "html.parser")
+print(markdownify(soup.prettify()))
+```
+
+Save as `convert.py` and `fetch.py` (or any name), then run:
 
 ```bash
-markdown.sh to-md ./annual-report.pdf   # PDF, Word, Excel, PPTX
-webfetch.sh https://example.com/docs/api  # web page → markdown
+uv run convert.py ./annual-report.pdf > source.md
+uv run fetch.py https://example.com/docs/api > source.md
 ```
 
 Track original source in `sources[].resource` and page/slide/sheet locations in `sources[].location`.
@@ -73,10 +117,10 @@ Track original source in `sources[].resource` and page/slide/sheet locations in 
 
 ```bash
 # Validate entire bundle
-okf.sh validate --bundle ./my-bundle
+okf.py validate --bundle ./my-bundle
 
 # Validate specific files
-okf.sh validate --bundle ./my-bundle concepts/revenue.md
+okf.py validate --bundle ./my-bundle concepts/revenue.md
 ```
 
 ### Updating a bundle
@@ -415,6 +459,8 @@ Rules: one link per concept mention per section; do not link from headers, code 
 
 ## Gotchas
 
+- **Use direct Python scripts, not skill scripts** — document conversion and web fetching use PEP 723 inline dependency blocks with `uv run`, not `markdown.sh` or `webfetch.sh`. Write self-contained scripts that declare their own dependencies.
+- **PEP 723 block is mandatory** — every Python script must include the `# /// script ... # ///` metadata block so `uv run` resolves dependencies. Without it, the script runs with no dependency management.
 - **Always use file-relative paths for cross-links** — never absolute paths beginning with `/`.
 - **`type` is the only required frontmatter field** — `type: Concept` alone is fully conformant.
 - **`location` varies by source type** — `pages` for PDF, `slides` for PPTX, `sheet`+`range` for XLSX, `section`/`heading` for web. Omit when unknown.
