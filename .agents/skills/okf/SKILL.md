@@ -39,12 +39,36 @@ The format answers five questions that plain markdown cannot:
 
 1. **Detect language** — identify the source's natural language. All produced filenames, titles, descriptions, body prose, and `index.md` entries use this language. Exception: `log.md` is always in English.
 2. **Ingest** the source in chunks — convert or fetch incrementally, processing overlapping windows so context carries across boundaries.
-3. **Extract** every concept — do not skip or summarize away details. The bundle must be sufficient to recreate the original source (lossy in format, semantically complete).
-4. **Write** one `.md` file per concept with frontmatter (`type` required) and structured body.
+3. **Extract** every concept — do not skip or summarize away details. The bundle must be sufficient to recreate the original source (lossy in format, semantically complete). Every page, slide, section must be accounted for.
+4. **Write** one `.md` file per concept with frontmatter (`type` required), `coverage` tracking, and structured body.
 5. **Cross-link** concepts with bundle-relative markdown links (recommended form: `/path/to/concept.md`).
-6. **Generate** `index.md` at bundle root.
+6. **Verify** — run `okf.py check-coverage` to ensure no source regions are uncovered.
+7. **Generate** `index.md` at bundle root.
 
-**Chunked ingestion.** Split converted markdown into fixed 500-line chunks. Process each with a sliding window (tail of previous + full current + head of next). Record `location` in `sources` entries for every source reference. After all chunks, deduplicate and merge.
+**Chunked ingestion.** Split converted markdown into fixed 500-line chunks. Process each with a sliding window (tail of previous + full current + head of next). Record source region in `coverage` for every concept. After all chunks, deduplicate and merge.
+
+**Coverage tracking.** Every concept must record which source regions it covers. This enables verification that nothing was missed.
+
+```yaml
+coverage:
+  - source: annual-report.pdf
+    region: { pages: [12-15] }
+  - source: annual-report.pdf
+    region: { pages: [22-23] }
+```
+
+**Extraction rules.** Do not summarize, paraphrase, or omit. Capture verbatim:
+
+- **Tables** — every row and column, as markdown tables. Never summarize "see table above".
+- **Lists** — preserve hierarchy and numbering. Every bullet, every sub-bullet.
+- **Formulas** — verbatim in fenced code blocks or math notation. Never paraphrase.
+- **Code blocks** — verbatim. Never truncate or summarize.
+- **Footnotes** — capture as markdown footnotes linked to the claim.
+- **Cross-references** — resolve to OKF concept links where possible.
+- **Appendices** — same extraction treatment as body content.
+- **Images/diagrams** — describe content in prose, include alt text equivalent.
+- **Definitions** — exact wording, not paraphrased.
+- **Numbers/metrics** — exact values with units, never rounded or approximated.
 
 **Ingest with direct Python scripts.** Use PEP 723 inline dependencies with `uv run`:
 
@@ -140,6 +164,42 @@ okf.py validate --bundle ./my-bundle
 okf.py validate --bundle ./my-bundle concepts/revenue.md
 ```
 
+### Checking source coverage
+
+After creating a bundle, verify no source regions were missed:
+
+```bash
+# Summary of coverage
+okf.py check-coverage --bundle ./bundle
+
+# Report gaps in page coverage
+okf.py check-coverage --bundle ./bundle --report gaps
+
+# Report overlapping coverage (same pages in multiple concepts)
+okf.py check-coverage --bundle ./bundle --report overlaps
+
+# Report concepts without coverage tracking
+okf.py check-coverage --bundle ./bundle --report uncovered
+
+# Check against expected source regions (JSON file)
+okf.py check-coverage --bundle ./bundle --source-regions expected-regions.json
+
+# JSON output
+okf.py check-coverage --bundle ./bundle --report json
+```
+
+Expected regions file format:
+
+```json
+{
+  "annual-report.pdf": [
+    {"pages": [1, 2, 3]},
+    {"pages": [4-10]},
+    {"pages": [11, 12, 13, 14, 15]}
+  ]
+}
+```
+
 ### Scaffolding
 
 ```bash
@@ -202,6 +262,24 @@ usage_window: { from: 2026-06-01, to: 2026-06-30 }
 
 Each `sources` entry: `resource` (required), `id`, `title`, `author`, `usage_count`, `last_modified`. `usage_window` is a sibling of `sources`. Per-claim attribution uses markdown footnotes keyed to `sources[].id`.
 
+### Coverage (extension)
+
+`coverage` tracks which source regions a concept covers. Enables verification that no content was missed during extraction.
+
+```yaml
+coverage:
+  - source: annual-report.pdf
+    region: { pages: [12-15] }
+  - source: annual-report.pdf
+    region: { pages: [22-23] }
+  - source: product-deck.pptx
+    region: { slides: [7-9] }
+  - source: financials.xlsx
+    region: { sheet: "Revenue", range: "A1:D50" }
+```
+
+Each entry: `source` (required, filename or URI), `region` (required, mapping with `pages`, `slides`, `sheet`+`range`, or `section`).
+
 ### Trust
 
 ```yaml
@@ -255,6 +333,10 @@ attester:
 - **YAML auto-parses dates** — `stale_after: 2026-12-31` becomes a `datetime.date` object, not a string. `okf.py` handles both string and native types.
 - **`okf.py visit` requires `--query`** — always provide a query expression. Use `status:stable` to match all stable concepts.
 - **Quotes for multi-word values** — use `type:"Attested Computation"` (quotes) not `type:Attested Computation`.
+- **Always track coverage** — every concept must have `coverage` entries recording which source regions it covers. Run `okf.py check-coverage --report gaps` after extraction to find missed regions.
+- **Never summarize tables** — capture every row and column verbatim. A summarized table loses data needed for reconstruction.
+- **Never paraphrase formulas** — capture verbatim in fenced code blocks. Paraphrased formulas introduce errors.
+- **Coverage is a known extension** — not in the OKF v0.2 spec but documented by this skill. Consumers must not reject it (spec allows unknown keys).
 
 ## References
 

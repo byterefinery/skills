@@ -34,6 +34,8 @@ CONCEPT_KEYS = {
     "generated", "verified",
     "status", "stale_after",
     "runtime", "parameters", "computation", "executor", "attester",
+    # Known extensions
+    "coverage",
 }
 
 SOURCES_ENTRY_KEYS = {
@@ -834,6 +836,23 @@ def validate_concept(path):
     if "stale_after" in fm and not _is_date_valid(fm["stale_after"]):
         issues.append(("WARN", f"{name}.stale_after: not a valid date"))
 
+    # coverage (known extension)
+    if "coverage" in fm:
+        cov = fm["coverage"]
+        if not isinstance(cov, list):
+            issues.append(("ERROR", f"{name}.coverage: expected list"))
+        else:
+            for i, entry in enumerate(cov):
+                if not isinstance(entry, dict):
+                    issues.append(("ERROR", f"{name}.coverage[{i}]: expected mapping"))
+                    continue
+                if "source" not in entry:
+                    issues.append(("ERROR", f"{name}.coverage[{i}].source: required within coverage entry"))
+                elif not isinstance(entry["source"], str):
+                    issues.append(("ERROR", f"{name}.coverage[{i}].source: expected string"))
+                if "region" in entry and not isinstance(entry["region"], dict):
+                    issues.append(("ERROR", f"{name}.coverage[{i}].region: expected mapping"))
+
     # Attested Computation
     concept_type = fm.get("type", "")
     if concept_type == "Attested Computation":
@@ -1311,6 +1330,290 @@ def cmd_list(args):
     return 0
 
 
+def cmd_check_coverage(args):
+    """Check source coverage of a bundle."""
+    bundle = Path(args.bundle).resolve()
+    if not bundle.is_dir():
+        print(f"ERROR: '{args.bundle}' is not a directory", file=sys.stderr)
+        return 1
+
+    # Collect all coverage entries from all concepts
+    all_coverage = []  # list of (path, coverage_entry)
+    all_concepts = []
+
+    for rel, full, is_concept in walk_bundle(bundle):
+        if not is_concept:
+            continue
+        fm, body = load_concept(bundle, rel)
+        if fm is None:
+            continue
+        all_concepts.append((rel, fm))
+        cov = fm.get("coverage", [])
+        if not isinstance(cov, list):
+            continue
+        for entry in cov:
+            if isinstance(entry, dict):
+                all_coverage.append((rel, entry))
+
+    # Build coverage map: source -> set of regions -> [concept paths]
+    coverage_map = {}  # source -> {region_str: [paths]}
+    for rel, entry in all_coverage:
+        source = entry.get("source", "")
+        region = entry.get("region", {})
+        region_str = _region_to_str(region)
+        if source not in coverage_map:
+            coverage_map[source] = {}
+        if region_str not in coverage_map[source]:
+            coverage_map[source][region_str] = []
+        coverage_map[source][region_str].append(rel)
+
+    # If --source-regions file given, check for gaps
+    if args.source_regions:
+        sr_path = Path(args.source_regions)
+        if not sr_path.exists():
+            print(f"ERROR: source regions file not found: {args.source_regions}", file=sys.stderr)
+            return 1
+        try:
+            source_regions = json.loads(sr_path.read_text())
+        except Exception as e:
+            print(f"ERROR: cannot parse {args.source_regions}: {e}", file=sys.stderr)
+            return 1
+        _check_gaps(coverage_map, source_regions)
+        return 0
+
+    # Report mode
+    report = args.report or "summary"
+
+    if report == "summary":
+        _print_coverage_summary(coverage_map, all_concepts)
+    elif report == "gaps":
+        _report_gaps(coverage_map, all_concepts)
+    elif report == "overlaps":
+        _report_overlaps(coverage_map)
+    elif report == "json":
+        _print_coverage_json(coverage_map, all_concepts)
+    elif report == "uncovered":
+        _report_uncovered(all_concepts)
+
+    return 0
+
+
+def _region_to_str(region):
+    """Convert a region dict to a string key."""
+    if not region:
+        return "(unknown)"
+    return json.dumps(region, sort_keys=True, default=str)
+
+
+def _region_page_set(region):
+    """Normalize a region to a frozenset of pages for comparison."""
+    pages = _parse_region_pages(region)
+    if pages:
+        return frozenset(pages)
+    slides = region.get("slides", [])
+    if isinstance(slides, list):
+        slide_set = set()
+        for s in slides:
+            s_str = str(s).strip()
+            if "-" in s_str:
+                parts = s_str.split("-")
+                try:
+                    slide_set.update(range(int(parts[0]), int(parts[1]) + 1))
+                except ValueError:
+                    pass
+            else:
+                try:
+                    slide_set.add(int(s_str))
+                except ValueError:
+                    pass
+        if slide_set:
+            return frozenset(slide_set)
+    return None
+
+
+def _parse_region_pages(region):
+    """Parse a region's pages into a set of page numbers."""
+    pages = region.get("pages", [])
+    result = set()
+    if isinstance(pages, list):
+        for p in pages:
+            p_str = str(p).strip()
+            if "-" in p_str:
+                parts = p_str.split("-")
+                try:
+                    start = int(parts[0])
+                    end = int(parts[1])
+                    result.update(range(start, end + 1))
+                except ValueError:
+                    pass
+            else:
+                try:
+                    result.add(int(p_str))
+                except ValueError:
+                    pass
+    return result
+
+
+def _print_coverage_summary(coverage_map, all_concepts):
+    """Print a summary of coverage."""
+    total_concepts = len(all_concepts)
+    concepts_with_coverage = len(set(
+        rel for rel, _ in [
+            (rel, entry) for rel, fm in all_concepts
+            for entry in fm.get("coverage", [])
+        ]
+    ))
+    total_sources = len(coverage_map)
+    total_regions = sum(len(regions) for regions in coverage_map.values())
+
+    print(f"Concepts:              {total_concepts}")
+    print(f"Concepts with coverage: {concepts_with_coverage}")
+    print(f"Sources tracked:       {total_sources}")
+    print(f"Region entries:        {total_regions}")
+
+    if coverage_map:
+        print()
+        print("Coverage by source:")
+        for source in sorted(coverage_map):
+            regions = coverage_map[source]
+            print(f"  {source}: {len(regions)} region(s)")
+
+    # Show concepts without coverage
+    covered = set()
+    for rel, entry in [
+        (rel, entry) for rel, fm in all_concepts
+        for entry in fm.get("coverage", [])
+    ]:
+        if isinstance(entry, dict):
+            covered.add(rel)
+    uncovered = [rel for rel, _ in all_concepts if rel not in covered]
+    if uncovered:
+        print()
+        print(f"Concepts without coverage ({len(uncovered)}):")
+        for rel in uncovered:
+            print(f"  {rel}")
+
+
+def _report_gaps(coverage_map, all_concepts):
+    """Report potential coverage gaps."""
+    gaps_found = False
+    for source in sorted(coverage_map):
+        regions = coverage_map[source]
+        all_pages = set()
+        for region_str, paths in regions.items():
+            try:
+                region = json.loads(region_str)
+                pages = _parse_region_pages(region)
+                all_pages.update(pages)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        if not all_pages:
+            continue
+        min_page = min(all_pages)
+        max_page = max(all_pages)
+        missing = set(range(min_page, max_page + 1)) - all_pages
+        if missing:
+            print(f"GAP {source}: missing pages {sorted(missing)} (tracked: {min_page}-{max_page})")
+            gaps_found = True
+    if not gaps_found:
+        print("No page-range gaps detected.")
+
+
+def _report_overlaps(coverage_map):
+    """Report overlapping coverage (same pages in multiple concepts)."""
+    found = False
+    for source in sorted(coverage_map):
+        # Build page -> concepts map
+        page_to_concepts = {}
+        for region_str, paths in coverage_map[source].items():
+            try:
+                region = json.loads(region_str)
+                pages = _parse_region_pages(region)
+                for page in pages:
+                    if page not in page_to_concepts:
+                        page_to_concepts[page] = set()
+                    for p in paths:
+                        page_to_concepts[page].add(p)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        # Find pages covered by multiple concepts
+        overlap_pages = {p: cs for p, cs in page_to_concepts.items() if len(cs) > 1}
+        if overlap_pages:
+            print(f"OVERLAP {source}: {len(overlap_pages)} page(s) covered by multiple concepts")
+            for page in sorted(overlap_pages):
+                print(f"  page {page}: {sorted(overlap_pages[page])}")
+            found = True
+    if not found:
+        print("No overlapping coverage detected.")
+
+
+def _report_uncovered(all_concepts):
+    """Report concepts without coverage tracking."""
+    uncovered = []
+    for rel, fm in all_concepts:
+        cov = fm.get("coverage")
+        if not cov or (isinstance(cov, list) and len(cov) == 0):
+            uncovered.append(rel)
+    if uncovered:
+        print(f"Concepts without coverage ({len(uncovered)}):")
+        for rel in uncovered:
+            print(f"  {rel}")
+    else:
+        print("All concepts have coverage tracking.")
+
+
+def _print_coverage_json(coverage_map, all_concepts):
+    """Print coverage as JSON."""
+    out = {
+        "coverage": {},
+        "concepts": [],
+    }
+    for source, regions in sorted(coverage_map.items()):
+        out["coverage"][source] = {
+            region: paths for region, paths in sorted(regions.items())
+        }
+    for rel, fm in all_concepts:
+        cov = fm.get("coverage", [])
+        out["concepts"].append({
+            "path": rel,
+            "has_coverage": isinstance(cov, list) and len(cov) > 0,
+            "coverage": cov if isinstance(cov, list) else [],
+        })
+    print(json.dumps(out, indent=2, default=str))
+
+
+def _check_gaps(coverage_map, source_regions):
+    """Check for uncovered regions against a source regions file."""
+    # Build normalized page coverage per source
+    source_pages = {}  # source -> set of covered pages
+    for source, regions in coverage_map.items():
+        all_pages = set()
+        for region_str in regions:
+            try:
+                region = json.loads(region_str)
+                pages = _parse_region_pages(region)
+                all_pages.update(pages)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        if all_pages:
+            source_pages[source] = all_pages
+
+    # source_regions is a dict: {source: [region1, region2, ...]}
+    gaps_found = False
+    for source, expected_regions in sorted(source_regions.items()):
+        covered = source_pages.get(source, set())
+        for expected in expected_regions:
+            expected_pages = _parse_region_pages(expected)
+            if not expected_pages:
+                continue
+            uncovered = expected_pages - covered
+            if uncovered:
+                print(f"GAP {source}: pages {sorted(uncovered)} not covered")
+                gaps_found = True
+    if not gaps_found:
+        print("All expected regions are covered.")
+
+
 # ── Table output helpers ──────────────────────────────────────────────
 
 def _print_list_table(results):
@@ -1445,6 +1748,14 @@ def main():
     lp.add_argument("--bundle", required=True, help="Bundle root directory")
     lp.add_argument("--json", action="store_true", help="Output as JSON")
 
+    # check-coverage
+    ccp = sub.add_parser("check-coverage",
+                         help="Check source coverage of a bundle")
+    ccp.add_argument("--bundle", required=True, help="Bundle root directory")
+    ccp.add_argument("--source-regions", help="JSON file of expected source regions")
+    ccp.add_argument("--report", choices=["summary", "gaps", "overlaps", "uncovered", "json"],
+                     default="summary", help="Report type (default: summary)")
+
     args = parser.parse_args()
 
     commands = {
@@ -1460,6 +1771,8 @@ def main():
     cmd = commands.get(args.command)
     if cmd:
         sys.exit(cmd(args))
+    elif args.command == "check-coverage":
+        sys.exit(cmd_check_coverage(args))
     else:
         parser.print_help()
         sys.exit(1)

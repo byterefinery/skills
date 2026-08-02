@@ -112,6 +112,30 @@ Derived from `verified`:
 
 `stale_after` is an absolute date. A concept is stale when `today >= stale_after`.
 
+## Coverage (known extension)
+
+`coverage` tracks which source regions a concept covers. Enables verification that no content was missed during extraction.
+
+```yaml
+coverage:
+  - source: annual-report.pdf
+    region: { pages: [12-15] }
+  - source: annual-report.pdf
+    region: { pages: [22-23] }
+```
+
+Each entry:
+- `source`: required, filename or URI
+- `region`: required, mapping with `pages` (list), `slides` (list), `sheet`+`range` (Excel), or `section` (web/markdown)
+
+Region formats:
+- PDF/Word: `{ pages: [12, 13, 15-18] }`
+- PowerPoint: `{ slides: [7-12] }`
+- Excel: `{ sheet: "Revenue", range: "A1:D50" }`
+- Web/Markdown: `{ section: "## Authentication" }`
+
+Check coverage with `okf.py check-coverage --bundle ./bundle`.
+
 ## Extensions
 
 Producers may include any additional keys. Consumers must not reject documents with unrecognized fields and should preserve unknown keys when round-tripping.
