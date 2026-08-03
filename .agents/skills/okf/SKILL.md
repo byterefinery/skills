@@ -1,6 +1,7 @@
 ---
 name: okf
-description: Creates, validates, and manages Open Knowledge Format (OKF v0.2) bundles — directory trees of markdown concept documents with YAML frontmatter. Use when the user needs to create a knowledge bundle from PDF, Office, or web sources; write or update concept documents; ingest markdown into multiple linked concepts; validate OKF conformance; generate index files; manage cross-links between concepts; or query bundles by temporal validity, authorship, trust tier, lifecycle status, or any frontmatter field. Uses okf.py for creating, validating, visiting, and searching OKF bundles. OKF documents are linked so agents can traverse and analyze content without original source files.
+description: Creates, validates, and manages Open Knowledge Format (OKF v0.2) bundles — directory trees of markdown concept documents with YAML frontmatter. Use with the `markdown` and `webfetch` skills to preprocess PDF, Office, and web sources into markdown; then OKF extracts concepts, writes linked documents with provenance/trust/freshness/lifecycle frontmatter, and enables querying by any frontmatter field. Uses okf.py for creating, validating, visiting, and searching OKF bundles.
+allowed-tools: Bash(okf.py:*)
 metadata:
   tags:
     - meta
@@ -33,17 +34,34 @@ The format answers five questions that plain markdown cannot:
 4. **Lifecycle** — is it the current version?
 5. **Attestation** — was this value produced the sanctioned way?
 
+## Preprocessing
+
+Route source material through the appropriate skill before OKF ingestion. Load the skill and follow its instructions.
+
+| Source type | Skill to load |
+|---|---|
+| PDF, DOCX, PPTX, ODT, XLSX, images | `markdown` |
+| Web URLs | `webfetch` |
+| Plain markdown/text | none — ingest directly |
+
+**Workflow:**
+
+1. Load the preprocessing skill (`markdown` for documents, `webfetch` for URLs).
+2. Convert or fetch the source to a markdown file.
+3. Feed the resulting markdown into the OKF extraction workflow below.
+
 ## Usage
 
 ### Creating a bundle from a source
 
 1. **Detect language** — identify the source's natural language. All produced filenames, titles, descriptions, body prose, and `index.md` entries use this language. Exception: `log.md` is always in English.
-2. **Ingest** the source in chunks — convert or fetch incrementally, processing overlapping windows so context carries across boundaries.
-3. **Extract** every concept — do not skip or summarize away details. The bundle must be sufficient to recreate the original source (lossy in format, semantically complete). Every page, slide, section must be accounted for.
-4. **Write** one `.md` file per concept with frontmatter (`type` required), `coverage` tracking, and structured body.
-5. **Cross-link** concepts with bundle-relative markdown links (recommended form: `/path/to/concept.md`).
-6. **Verify** — run `okf.py check-coverage` to ensure no source regions are uncovered.
-7. **Generate** `index.md` at bundle root.
+2. **Preprocess** — load the `markdown` skill (documents) or `webfetch` skill (URLs) and convert the source to markdown. Plain markdown/text feeds directly.
+3. **Ingest** the converted markdown in chunks — process overlapping windows so context carries across boundaries.
+4. **Extract** every concept — do not skip or summarize away details. The bundle must be sufficient to recreate the original source (lossy in format, semantically complete). Every page, slide, section must be accounted for.
+5. **Write** one `.md` file per concept with frontmatter (`type` required), `coverage` tracking, and structured body.
+6. **Cross-link** concepts with bundle-relative markdown links (recommended form: `/path/to/concept.md`).
+7. **Verify** — run `okf.py check-coverage` to ensure no source regions are uncovered.
+8. **Generate** `index.md` at bundle root.
 
 **Chunked ingestion.** Split converted markdown into fixed 500-line chunks. Process each with a sliding window (tail of previous + full current + head of next). Record source region in `coverage` for every concept. After all chunks, deduplicate and merge.
 
@@ -70,21 +88,7 @@ coverage:
 - **Definitions** — exact wording, not paraphrased.
 - **Numbers/metrics** — exact values with units, never rounded or approximated.
 
-**Ingest with direct Python scripts.** Use PEP 723 inline dependencies with `uv run`:
-
-```python
-#!/usr/bin/env -S uv run --script
-#
-# /// script
-# requires-python = ">=3.10"
-# dependencies = ["docling"]
-# ///
-"""Convert PDF/Office documents to markdown."""
-import sys
-from docling.document_converter import DocumentConverter
-result = DocumentConverter().convert(sys.argv[1] if len(sys.argv) > 1 else "./input.pdf")
-print(result.document.export_to_markdown())
-```
+**Preprocess the source.** Convert the source to markdown by loading the appropriate skill — `markdown` for documents, `webfetch` for URLs. See the Preprocessing section.
 
 ### Querying a bundle
 
@@ -318,7 +322,7 @@ attester:
 
 ## Gotchas
 
-- **Use direct Python scripts, not skill scripts** — document conversion uses PEP 723 inline dependencies with `uv run`, not external scripts.
+- **Use skills for preprocessing** — load the `markdown` skill for document conversion and the `webfetch` skill for fetching URLs. OKF ingests the resulting markdown.
 - **PEP 723 block is mandatory** — every Python script must include the `# /// script ... # ///` metadata block.
 - **Bundle-relative paths recommended** — use `/path/to/concept.md` (bundle-relative) for cross-links, not relative paths. Both forms are valid; bundle-relative is stable when documents move.
 - **`type` is the only required field** — `type: Concept` alone is fully conformant.
