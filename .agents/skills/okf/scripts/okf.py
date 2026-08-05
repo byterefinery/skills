@@ -17,7 +17,6 @@ Usage:
 """
 
 import argparse
-import copy
 import datetime
 import json
 import re
