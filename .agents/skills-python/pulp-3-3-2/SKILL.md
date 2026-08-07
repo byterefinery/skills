@@ -10,7 +10,7 @@ description: >
   subject to linear constraints. Covers PuLP 3.3.2 API including `prob.add_variable()`,
   `prob.add_variable_dicts()`, `prob.add_variable_matrix()`, `lpSum`, `lpDot`, solver
   configuration (CBC, HiGHS, GLPK, Gurobi, CPLEX, etc.), file I/O (LP/MPS), dual values,
-  resolve workflows, and common modeling patterns. Install via `pip install "pulp[cbc]==3.3.2"` (the `[cbc]` extra bundles the CBC solver).
+  resolve workflows, and common modeling patterns. Install via `pip install "pulp[cbc]"` (the `[cbc]` extra bundles the CBC solver; pin to `==3.3.2` if otherwise required).
 ---
 
 # pulp 3.3.2
@@ -19,7 +19,7 @@ description: >
 
 PuLP is a Python library for formulating and solving linear programming (LP), mixed-integer linear programming (MILP), and binary programming problems. It provides a clean, declarative API for building optimization models and dispatches to any installed solver (CBC included by default; supports HiGHS, GLPK, Gurobi, CPLEX, MOSEK, XPRESS, SCIP, COPT, SAS, CHOCO, MIPCL, and more).
 
-Install with `pip install "pulp[cbc]==3.3.2"` — the `[cbc]` extra bundles the CBC solver so `prob.solve()` works out of the box without separate solver setup.
+Install with `pip install "pulp[cbc]"` — the `[cbc]` extra bundles the CBC solver so `prob.solve()` works out of the box without separate solver setup. Pin to `==3.3.2` if otherwise required.
 
 PuLP 3.3.2 introduces `prob.add_variable()` / `add_variable_dicts()` / `add_variable_matrix()` as the preferred API. The legacy `LpVariable()` constructor still works but emits deprecation warnings (removed in PuLP 4.0).
 

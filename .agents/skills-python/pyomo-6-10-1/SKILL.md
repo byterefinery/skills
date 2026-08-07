@@ -36,6 +36,14 @@ Pyomo provides two modeling paradigms:
 
 Core components: `Set`, `Param`, `Var`, `Objective`, `Constraint`, `Block`. Indexed variants accept sets as arguments (e.g., `Var(I, J)` creates variables indexed by `(i, j)`).
 
+## Installation
+
+```bash
+pip install 'pyomo[optional]==6.10.1'
+```
+
+This installs Pyomo 6.10.1 with optional dependencies (AMPL solver interface, PyNEOS, etc.). For a minimal install use `pip install 'pyomo==6.10.1'`.
+
 ## Usage
 
 ### Quick Start
