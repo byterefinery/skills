@@ -11,21 +11,18 @@
 # ]
 # ///
 
-"""websearch — Multi-engine web search with LLM-optimized output.
+"""websearch — DuckDuckGo web search with LLM-optimized output.
 
-Searches DuckDuckGo, Brave, Mojeek, Startpage, and Qwant.
-Outputs results as markdown (default), JSON, or YAML.
+Searches DuckDuckGo and returns results as markdown (default), JSON, or YAML.
 Uses scrapling Fetcher with Safari TLS impersonation by default.
 """
 
 from __future__ import annotations
 
 import argparse
-import html as html_mod
 import json
 import logging
 import os
-import random
 import sys
 import textwrap
 import urllib.parse
@@ -34,65 +31,10 @@ import urllib.parse
 logging.getLogger("scrapling").setLevel(logging.WARNING)
 
 
-# ── Engine definitions ───────────────────────────────────────────────
+# ── DuckDuckGo configuration ─────────────────────────────────────────
 
-class Engine:
-    """Search engine configuration."""
-    def __init__(self, name, url, method="GET", post_data=None, referer=None):
-        self.name = name
-        self.url = url
-        self.method = method
-        self.post_data = post_data
-        self.referer = referer
-
-
-ENGINES = {
-    "duckduckgo-html": Engine(
-        name="duckduckgo-html",
-        url="https://html.duckduckgo.com/html/?q={query}",
-        method="GET",
-        referer="https://duckduckgo.com/",
-    ),
-    "duckduckgo-lite": Engine(
-        name="duckduckgo-lite",
-        url="https://lite.duckduckgo.com/lite/",
-        method="POST",
-        post_data="q={query}",
-        referer="https://duckduckgo.com/",
-    ),
-}
-
-ALL_ENGINES = ["duckduckgo-html"]
-
-# duckduckgo-lite shares the same index as duckduckgo-html, so it's excluded
-# from the default "all" set. Use --engine duckduckgo-lite explicitly if needed.
-
-# Engine aliases (short names → canonical names)
-ENGINE_ALIASES = {
-    "ddg": "duckduckgo-html",
-    "ddg-html": "duckduckgo-html",
-    "ddg-lite": "duckduckgo-lite",
-    "lite": "duckduckgo-lite",
-}
-
-def resolve_engines(engine_str: str | None) -> list[str]:
-    """Parse comma-separated engine string, resolve aliases, validate."""
-    if engine_str is None:
-        return ALL_ENGINES
-
-    raw = [e.strip().lower() for e in engine_str.split(",") if e.strip()]
-    engines = []
-    for name in raw:
-        if name == "all":
-            return ALL_ENGINES
-        # Resolve alias
-        canonical = ENGINE_ALIASES.get(name, name)
-        if canonical not in ENGINES:
-            print(f"Warning: unknown engine '{name}', skipping.", file=sys.stderr)
-            continue
-        if canonical not in engines:
-            engines.append(canonical)
-    return engines if engines else ALL_ENGINES
+DDG_URL = "https://html.duckduckgo.com/html/?q={query}"
+DDG_REFERER = "https://duckduckgo.com/"
 
 
 # ── AI-targeted HTML sanitization ────────────────────────────────────
@@ -141,15 +83,15 @@ _CACHE_DIR = Path(tempfile.gettempdir()) / "websearch-cache"
 _CACHE_TTL = 3600  # 1 hour
 
 
-def _cache_key(engine_name: str, query: str) -> str:
-    """Generate a unique cache key for engine + query."""
-    raw = f"{engine_name}:{query}".lower().strip()
+def _cache_key(query: str) -> str:
+    """Generate a unique cache key for query."""
+    raw = query.lower().strip()
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
-def _cache_get(engine_name: str, query: str) -> str | None:
+def _cache_get(query: str) -> str | None:
     """Get cached HTML if within TTL."""
-    key = _cache_key(engine_name, query)
+    key = _cache_key(query)
     cache_file = _CACHE_DIR / f"{key}.html"
     if not cache_file.exists():
         return None
@@ -163,10 +105,10 @@ def _cache_get(engine_name: str, query: str) -> str | None:
         return None
 
 
-def _cache_put(engine_name: str, query: str, html: str) -> None:
+def _cache_put(query: str, html: str) -> None:
     """Cache HTML results."""
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    key = _cache_key(engine_name, query)
+    key = _cache_key(query)
     cache_file = _CACHE_DIR / f"{key}.html"
     try:
         cache_file.write_text(html, encoding="utf-8")
@@ -188,25 +130,18 @@ def _is_challenge(html_text: str) -> bool:
 def _has_results(html_text: str) -> bool:
     """Check if HTML contains any search results."""
     return any(marker in html_text for marker in [
-        'result__a', 'result-link', 'data-title', 'class="r"',
-        'searchResult', 'result-snippet', 'result__snippet',
+        'result__a', 'result__snippet',
     ])
 
 
-def _fetch_with_scrapling(url: str, method: str, headers: dict, data: bytes | None) -> str | None:
+def _fetch_with_scrapling(url: str, headers: dict) -> str | None:
     """Fetch with scrapling Fetcher (TLS impersonation + stealthy headers)."""
     from scrapling import Fetcher
     try:
-        if method == "POST":
-            resp = Fetcher.post(
-                url, data=data, headers=headers,
-                impersonate="safari", stealthy_headers=True,
-            )
-        else:
-            resp = Fetcher.get(
-                url, headers=headers,
-                impersonate="safari", stealthy_headers=True,
-            )
+        resp = Fetcher.get(
+            url, headers=headers,
+            impersonate="safari", stealthy_headers=True,
+        )
         if resp.status != 200:
             return None
         html = resp.html_content
@@ -215,14 +150,11 @@ def _fetch_with_scrapling(url: str, method: str, headers: dict, data: bytes | No
         return None
 
 
-def _fetch_with_requests(url: str, method: str, headers: dict, data: bytes | None) -> str | None:
+def _fetch_with_requests(url: str, headers: dict) -> str | None:
     """Fetch with requests (stdlib fallback, no TLS impersonation)."""
     import requests
     try:
-        if method == "POST":
-            resp = requests.post(url, headers=headers, data=data, timeout=30, allow_redirects=True)
-        else:
-            resp = requests.get(url, headers=headers, timeout=30, allow_redirects=True)
+        resp = requests.get(url, headers=headers, timeout=30, allow_redirects=True)
         if resp.status_code != 200:
             return None
         html = resp.text
@@ -231,43 +163,38 @@ def _fetch_with_requests(url: str, method: str, headers: dict, data: bytes | Non
         return None
 
 
-def fetch_engine(engine: Engine, query: str) -> str | None:
-    """Fetch search results with cache: cache → scrapling → requests.
+def fetch(query: str) -> str | None:
+    """Fetch DuckDuckGo search results with cache: cache → scrapling → requests.
 
-    Results cached per-engine for 1 hour to avoid rate-limiting.
+    Results cached for 1 hour to avoid rate-limiting.
     Returns HTML with results or None on failure/challenge.
     """
     # 1. Check cache first
-    cached = _cache_get(engine.name, query)
+    cached = _cache_get(query)
     if cached:
         return cached
 
     encoded = urllib.parse.quote_plus(query)
-    url = engine.url.format(query=encoded)
+    url = DDG_URL.format(query=encoded)
 
-    headers = {}
-    if engine.referer:
-        headers["Referer"] = engine.referer
-
-    data = None
-    if engine.method == "POST":
-        data = (engine.post_data.format(query=encoded) if engine.post_data else "q=" + query).encode("utf-8")
-        headers["Content-Type"] = "application/x-www-form-urlencoded"
+    headers = {"Referer": DDG_REFERER}
 
     # 2. Try scrapling (TLS fingerprint impersonation — best anti-bot)
-    html = _fetch_with_scrapling(url, engine.method, headers, data)
+    html = _fetch_with_scrapling(url, headers)
     if html and _has_results(html):
-        _cache_put(engine.name, query, html)
+        _cache_put(query, html)
         return html
 
     # 3. Fallback: requests (no TLS impersonation, but sometimes works)
-    html = _fetch_with_requests(url, engine.method, headers, data)
+    html = _fetch_with_requests(url, headers)
     if html and _has_results(html):
-        _cache_put(engine.name, query, html)
+        _cache_put(query, html)
         return html
 
     return None
 
+
+# ── Parsing ──────────────────────────────────────────────────────────
 
 from bs4 import BeautifulSoup
 
@@ -277,30 +204,18 @@ def _soup(html_text: str) -> BeautifulSoup:
     return BeautifulSoup(html_text, "html.parser")
 
 
-def extract_uddg(redirect_url: str) -> str:
-    """Extract and decode the actual URL from DuckDuckGo redirect."""
-    parsed = urllib.parse.urlparse(redirect_url)
-    params = urllib.parse.parse_qs(parsed.query)
-    uddg = params.get("uddg", [None])[0]
-    if uddg:
-        return urllib.parse.unquote(uddg)
-    return redirect_url.replace("//duckduckgo.com/l/?uddg=", "")
-
-
-def _parse_results(soup: BeautifulSoup, link_cls: str, snip_cls: str,
-                   url_cls: str, engine: str, decode_url: bool = False) -> list[dict]:
-    """Generic result parser using BeautifulSoup."""
+def parse_results(html_text: str) -> list[dict]:
+    """Parse DuckDuckGo HTML search results using BeautifulSoup."""
+    soup = _soup(html_text)
     results = []
     seen = set()
 
-    links = soup.find_all("a", class_=link_cls)
-    snippets = soup.find_all(class_=snip_cls)
-    urls = soup.find_all("a", class_=url_cls)
+    links = soup.find_all("a", class_="result__a")
+    snippets = soup.find_all(class_="result__snippet")
+    urls = soup.find_all("a", class_="result__url")
 
     for i, link in enumerate(links):
         href = link.get("href", "")
-        if decode_url:
-            href = extract_uddg(href)
         title = link.get_text(strip=True)
         if not title or not href:
             continue
@@ -324,59 +239,19 @@ def _parse_results(soup: BeautifulSoup, link_cls: str, snip_cls: str,
             "url": href,
             "snippet": snippet,
             "source": source or href,
-            "engine": engine,
         })
 
     return results
 
 
-def parse_ddg_html(html_text: str) -> list[dict]:
-    """Parse DuckDuckGo HTML search results using BeautifulSoup."""
-    soup = _soup(html_text)
-    return _parse_results(soup, "result__a", "result__snippet",
-                          "result__url", "duckduckgo-html")
+# ── Search ───────────────────────────────────────────────────────────
 
-
-def parse_ddg_lite(html_text: str) -> list[dict]:
-    """Parse DuckDuckGo Lite search results using BeautifulSoup."""
-    soup = _soup(html_text)
-    return _parse_results(soup, "result-link", "result-snippet",
-                          "link-text", "duckduckgo-lite", decode_url=True)
-
-
-# Parser dispatch table
-PARSERS = {
-    "duckduckgo-html": parse_ddg_html,
-    "duckduckgo-lite": parse_ddg_lite,
-}
-
-
-# ── Search orchestration ─────────────────────────────────────────────
-
-def search(query: str, engines: list[str]) -> list[dict]:
-    """Search one or more engines, merge and deduplicate results."""
-    all_results = []
-    seen_urls = set()
-
-    for engine_name in engines:
-        engine = ENGINES.get(engine_name)
-        if not engine:
-            print(f"Warning: unknown engine '{engine_name}', skipping.", file=sys.stderr)
-            continue
-        html_text = fetch_engine(engine, query)
-        if html_text is None:
-            continue
-        parser = PARSERS.get(engine_name)
-        if not parser:
-            continue
-        results = parser(html_text)
-        for r in results:
-            norm_url = r["url"].rstrip("/").lower()
-            if norm_url in seen_urls:
-                continue
-            seen_urls.add(norm_url)
-            all_results.append(r)
-    return all_results
+def search(query: str) -> list[dict]:
+    """Search DuckDuckGo and return results."""
+    html_text = fetch(query)
+    if html_text is None:
+        return []
+    return parse_results(html_text)
 
 
 # ── Output formatters ────────────────────────────────────────────────
@@ -391,9 +266,6 @@ def format_markdown(results: list[dict], query: str) -> str:
         if r.get("snippet"):
             lines.append(f"{r['snippet']}\n")
         lines.append(f"- **URL**: {r['url']}")
-        if r.get("source") and r["source"] != r["url"]:
-            lines.append(f"- **Source**: {r['source']}")
-        lines.append(f"- **Engine**: {r.get('engine', 'unknown')}")
         lines.append("")
     return "\n".join(lines)
 
@@ -416,27 +288,18 @@ def format_yaml(results: list[dict], query: str) -> str:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="websearch.py",
-        description="Search the web and output LLM-optimized results.",
+        description="Search DuckDuckGo and output LLM-optimized results.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=textwrap.dedent("""\
-            Engines: duckduckgo-html, duckduckgo-lite, brave, mojeek, startpage, qwant
-            Aliases: ddg, ddg-html → duckduckgo-html | ddg-lite, lite → duckduckgo-lite
-
-            By default, searches all engines (excludes duckduckgo-lite) and deduplicates.
-
             Examples:
               websearch.py "react hooks tutorial"
-              websearch.py "python async" --engine ddg,brave
-              websearch.py "llm frameworks" --engine ddg-html,mojeek,startpage
-              websearch.py "web scraping" --engine ddg-lite,qwant --yaml
-              websearch.py "rust vs go" --json -o results.json
+              websearch.py "python async" --json
+              websearch.py "rust vs go" --yaml -o results.yaml
 
             Output formats: markdown (default), --json, --yaml
         """),
     )
     parser.add_argument("query", help="Search query string")
-    parser.add_argument("--engine", default=None, metavar="ENGINES",
-                        help="Comma-separated engine(s). Default: all (excludes duckduckgo-lite).")
     parser.add_argument("--json", action="store_true", default=False,
                         help="Output results as JSON (default: markdown)")
     parser.add_argument("--yaml", action="store_true", default=False,
@@ -450,8 +313,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    engines = resolve_engines(args.engine)
-    results = search(args.query, engines)
+    results = search(args.query)
 
     if args.json and args.yaml:
         print("Error: --json and --yaml are mutually exclusive", file=sys.stderr)
