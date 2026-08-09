@@ -1,6 +1,6 @@
 ---
 name: websearch
-description: Searches DuckDuckGo and returns LLM-optimized markdown, JSON, or YAML. Use this skill whenever the user wants to search the web, look up information online, find URLs, do web search, research a topic, or needs current/web-based answers. Uses Safari TLS impersonation and AI-targeted sanitization. Output: markdown (default), --json, --yaml.
+description: Searches DuckDuckGo and returns LLM-optimized markdown, JSON, or YAML. Use this skill whenever the user wants to search the web, look up information online, find URLs, do web search, research a topic, or needs current/web-based answers. Uses Safari TLS impersonation and AI-targeted sanitization. Output can be markdown (default), --json, --yaml.
 license: Apache-2.0
 compatibility: Requires uv installed. Script auto-resolves dependencies via PEP 723.
 metadata:
