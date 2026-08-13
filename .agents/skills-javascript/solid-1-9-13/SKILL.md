@@ -2,7 +2,7 @@
 name: solid-1-9-13
 description: Solid.js 1.9.13 — reactive UI library with fine-grained reactivity via signals. Covers createSignal, createMemo, createEffect, createResource, context, control flow components (For, Show, Switch/Match, Index, Suspense, ErrorBoundary), lazy loading, SSR, splitProps/mergeProps, and the JSX-based component model. Use when building Solid.js apps, working with fine-grained reactive state, migrating from React/Vue, or debugging Solid reactivity patterns.
 license: MIT
-compatibility: Requires Node.js 18+ for build tooling. Browsers: ES2017+ (Chrome 62+, Firefox 58+, Safari 11.1+, Edge 79+). JSX transform via babel-preset-solid or @babel/plugin-transform-react-jsx.
+compatibility: "Requires Node.js 18+ for build tooling. Browsers: ES2017+ (Chrome 62+, Firefox 58+, Safari 11.1+, Edge 79+). JSX transform via babel-preset-solid or @babel/plugin-transform-react-jsx."
 allowed-tools: Bash(npm:*) Bash(npx:*) Bash(pnpm:*) Bash(yarn:*) Bash(bun:*) Read
 metadata:
   tags:
