@@ -60,14 +60,43 @@ markdown.sh -i report.pdf --poppler
 markdown.sh -i report.pdf --gs
 ```
 
+### Layout control
+
+```bash
+# Default: layout preserved (poppler: -layout flag)
+markdown.sh -i report.pdf
+
+# Disable layout (raw text flow)
+markdown.sh -i report.pdf --no-layout
+```
+
+Layout preservation is on by default and affects the poppler engine (`pdftotext -layout`). It keeps visual column/spacing relationships. Disable with `--no-layout` for plain text flow. The flag has no effect on pypdf or ghostscript engines.
+
 ### Page comments
 
 ```bash
-# Default: page comments inserted
+# Default: page comments inserted (<!-- page N begin --> / <!-- page N end -->)
 markdown.sh -i report.pdf
 
 # Suppress page comments
 markdown.sh -i report.pdf --no-insert-page-number
+```
+
+### Image placeholders
+
+```bash
+# Default: <!-- image --> markers on pages with images
+markdown.sh -i report.pdf
+
+# Suppress image placeholders
+markdown.sh -i report.pdf --no-insert-image-placeholder
+```
+
+### Combined options
+
+```bash
+# No page comments, no image markers, no layout
+markdown.sh -i report.pdf --no-insert-page-number --no-insert-image-placeholder --no-layout
 ```
 
 Supported input formats: `.pdf`, `.docx`, `.pptx`, `.odt`, `.xlsx`
@@ -92,13 +121,14 @@ The script reports per-step and total processing time on stderr:
 - **PDF fallback chain** — when no engine flag is given: pypdf → poppler → ghostscript. First successful engine is used. Use `--pypdf`, `--poppler`, `--gs` to force a specific engine. Flags are mutually exclusive.
 - **Engine capabilities**:
   - **pypdf**: ~2s, extracts text layer only (empty for scanned pages)
-  - **poppler**: ~1s, preserves layout with `-layout` flag (empty for scanned pages)
+  - **poppler**: ~1s, preserves visual layout by default (`-layout`), raw text with `--no-layout`
   - **ghostscript**: ~6s, extracts text layer via txtwrite device (empty for scanned pages)
-- **Page comments** — `<!-- page N -->` inserted by default. Suppress with `--no-insert-page-number`.
-- **Image markers** — `<!-- image -->` inserted on pages that contain embedded images (detected via `pdfimages`). Gives indication of visual content without extracting the image itself.
+- **Page comments** — `<!-- page N begin -->` and `<!-- page N end -->` inserted by default, wrapping each page's content. Suppress with `--no-insert-page-number`.
+- **Image markers** — `<!-- image -->` inserted on pages with embedded images (detected via `pdfimages`). Gives indication of visual content without extracting the image itself. Suppress with `--no-insert-image-placeholder`.
 - **Scanned PDFs produce empty output** — all three engines extract from the text layer only. Scanned/image-only PDFs will produce nothing (but will have `<!-- image -->` markers).
 - **Excel: all sheets are converted** — xlsx input produces all sheets with no option to select individual ones. Each sheet becomes a `## <sheet-name>` heading followed by a pipe table.
 - **Excel: files from some tools may fail** — workbooks created by programs like openpyxl can produce `Entry not found` errors. Files from Excel or LibreOffice work correctly.
 - **PDF: requires an external engine** — PDF generation from Markdown needs TeX Live installed. If unavailable, PDF generation will fail.
 - **Conversions are not perfectly lossless** — complex formatting, custom styles, and advanced layouts may degrade. Structure is preserved, not presentation details.
 - **HTML output can be large** — the standalone single-file HTML embeds all CSS and images as data URIs, increasing file size.
+- **Whitespace stripping** — leading and trailing whitespace is stripped from every line after conversion. Empty lines are preserved (kept as blank lines). This cleans up PDF extraction artifacts without affecting content structure, including LTR/RTL text.

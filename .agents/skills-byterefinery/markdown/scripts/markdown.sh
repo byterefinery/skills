@@ -16,7 +16,11 @@
 #   --pypdf                      Use pypdf engine (fast, text-layer only PDFs)
 #   --poppler                    Use poppler/pdftotext engine
 #   --ghostscript, --gs          Use ghostscript engine
-#   --insert-page-number         Insert <!-- page N --> comments (default: on)
+#   --layout                     Preserve visual layout in PDF text (default: on)
+#   --no-layout                  Disable layout preservation in PDF text
+#   --insert-image-placeholder   Insert <!-- image --> on pages with images (default: on)
+#   --no-insert-image-placeholder   Suppress image placeholders
+#   --insert-page-number         Insert <!-- page N begin --> / <!-- page N end --> comments (default: on)
 #   --no-insert-page-number      Suppress page comments
 set -euo pipefail
 
@@ -24,9 +28,9 @@ set -euo pipefail
 
 die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
 
-# Strip trailing whitespace from every line (keeps newlines intact)
+# Strip leading and trailing whitespace from every line (keeps empty lines intact)
 cleanup_md() {
-    sed -i 's/[[:space:]]*$//' "$1"
+    sed -i 's/^[[:space:]]*//;s/[[:space:]]*$//' "$1"
 }
 
 usage() { cat <<EOF
@@ -39,7 +43,11 @@ Options:
   --pypdf                      Use pypdf engine (fast, text-layer only PDFs)
   --poppler                    Use poppler/pdftotext engine
   --ghostscript, --gs          Use ghostscript engine
-  --insert-page-number         Insert <!-- page N --> comments (default: on)
+  --layout                     Preserve visual layout in PDF text (default: on)
+  --no-layout                  Disable layout preservation
+  --insert-image-placeholder   Insert <!-- image --> on pages with images (default: on)
+  --no-insert-image-placeholder   Suppress image placeholders
+  --insert-page-number         Insert <!-- page N begin --> / <!-- page N end --> comments (default: on)
   --no-insert-page-number      Suppress page comments
   --help                       Show this help message
 
@@ -50,7 +58,7 @@ Format detection (from file extensions):
 
 PDF extraction engines:
   pypdf — fast, extracts text layer only (empty for scanned pages)
-  poppler — fast, preserves layout with -layout flag (empty for scanned pages)
+  poppler — fast, preserves visual layout (default) or raw text with --no-layout
   ghostscript — extracts text layer via txtwrite device (empty for scanned pages)
 
 PDF extraction fallback chain (when no engine flag given):
@@ -95,14 +103,16 @@ _timer_elapsed() {
 }
 
 # ── PDF Extraction Engines ──────────────────────────────────────────────────
-# Each: extract_<engine> <input> <output> <insert_page> <images_file>
+# Each: extract_<engine> <input> <output> <insert_page> <images_file> <use_layout> <insert_image>
 # Returns 0 on success, 1 on failure/skip.
 #
 # images_file: path to a file listing page numbers with images (one per line).
 #              If the file exists and the current page is listed, <!-- image --> is inserted.
+# use_layout:    1 = preserve visual layout (poppler: -layout), 0 = raw text
+# insert_image:  1 = insert <!-- image --> markers, 0 = suppress
 
 extract_pypdf() {
-    local input="$1" output="$2" insert_page="$3" images_file="$4"
+    local input="$1" output="$2" insert_page="$3" images_file="$4" use_layout="$5" insert_image="$6"
 
     if ! command -v uvx &>/dev/null; then
         printf '  Skipping pypdf (uvx not found)\n' >&2
@@ -124,11 +134,12 @@ from pypdf import PdfReader
 reader = PdfReader('$input')
 pages = reader.pages
 insert_page = $insert_page
+insert_image = $insert_image
 image_pages = set($_img_pages)
 
 for i, page in enumerate(pages, 1):
     if insert_page:
-        print(f'<!-- page {i} -->')
+        print(f'<!-- page {i} begin -->')
     has_image = i in image_pages
     # Also check page resources for embedded images
     if not has_image:
@@ -141,11 +152,13 @@ for i, page in enumerate(pages, 1):
                     if hasattr(xobj, 'get') and xobj.get('/Subtype') == '/Image':
                         has_image = True
                         break
-    if has_image:
+    if has_image and insert_image:
         print('<!-- image -->')
     text = page.extract_text()
     if text:
         print(text)
+    if insert_page:
+        print(f'<!-- page {i} end -->')
     print()
 " > "$output" 2>/dev/null
 
@@ -161,12 +174,14 @@ for i, page in enumerate(pages, 1):
 }
 
 extract_poppler() {
-    local input="$1" output="$2" insert_page="$3" images_file="$4"
+    local input="$1" output="$2" insert_page="$3" images_file="$4" use_layout="$5" insert_image="$6"
 
     check_tool pdftotext poppler || return 1
     check_tool pdfinfo pdfinfo || return 1
 
-    printf '  Trying poppler (pdftotext -layout)...\n' >&2
+    local _layout_flag="-layout"
+    [[ "$use_layout" == "0" ]] && _layout_flag=""
+    printf '  Trying poppler (pdftotext%s)...\n' " ${_layout_flag:-}" >&2
 
     local pages
     pages="$(pdfinfo "$input" 2>/dev/null | grep '^Pages:' | awk '{print $2}')"
@@ -175,11 +190,12 @@ extract_poppler() {
     > "$output"
     local p
     for (( p=1; p<=pages; p++ )); do
-        [[ "$insert_page" == "1" ]] && printf '<!-- page %d -->\n' "$p" >> "$output"
-        if [[ -s "$images_file" ]] && grep -qx "$p" "$images_file" 2>/dev/null; then
+        [[ "$insert_page" == "1" ]] && printf '<!-- page %d begin -->\n' "$p" >> "$output"
+        if [[ "$insert_image" == "1" ]] && [[ -s "$images_file" ]] && grep -qx "$p" "$images_file" 2>/dev/null; then
             printf '<!-- image -->\n' >> "$output"
         fi
-        pdftotext -layout -f "$p" -l "$p" "$input" - 2>/dev/null | tr -d '\f' >> "$output"
+        pdftotext ${_layout_flag:+-layout} -f "$p" -l "$p" "$input" - 2>/dev/null | tr -d '\f' >> "$output"
+        [[ "$insert_page" == "1" ]] && printf '<!-- page %d end -->\n' "$p" >> "$output"
         printf '\n' >> "$output"
     done
 
@@ -193,7 +209,7 @@ extract_poppler() {
 }
 
 extract_ghostscript() {
-    local input="$1" output="$2" insert_page="$3" images_file="$4"
+    local input="$1" output="$2" insert_page="$3" images_file="$4" use_layout="$5" insert_image="$6"
 
     check_tool gs ghostscript || return 1
 
@@ -214,8 +230,8 @@ extract_ghostscript() {
     > "$output"
     local p
     for (( p=1; p<=pages; p++ )); do
-        [[ "$insert_page" == "1" ]] && printf '<!-- page %d -->\n' "$p" >> "$output"
-        if [[ -s "$images_file" ]] && grep -qx "$p" "$images_file" 2>/dev/null; then
+        [[ "$insert_page" == "1" ]] && printf '<!-- page %d begin -->\n' "$p" >> "$output"
+        if [[ "$insert_image" == "1" ]] && [[ -s "$images_file" ]] && grep -qx "$p" "$images_file" 2>/dev/null; then
             printf '<!-- image -->\n' >> "$output"
         fi
         gs -sDEVICE=txtwrite -dFirstPage="$p" -dLastPage="$p" \
@@ -223,6 +239,7 @@ extract_ghostscript() {
         if [[ -s "$_gs_tmp" ]]; then
             tr -d '\f' < "$_gs_tmp" >> "$output"
         fi
+        [[ "$insert_page" == "1" ]] && printf '<!-- page %d end -->\n' "$p" >> "$output"
         printf '\n' >> "$output"
     done
     rm -f "$_gs_tmp"
@@ -241,7 +258,7 @@ extract_ghostscript() {
 # ── Conversion functions ────────────────────────────────────────────────────
 
 _cmd_to_md() {
-    local input="$1" output="$2" engine="$3" insert_page="$4"
+    local input="$1" output="$2" engine="$3" insert_page="$4" use_layout="$5" insert_image="$6"
 
     local ext
     ext="$(lower_ext "$input")"
@@ -276,7 +293,7 @@ _cmd_to_md() {
             if [[ -n "$engine" ]]; then
                 local step_start step_elapsed
                 step_start=$(_timer_start)
-                extract_$engine "$input" "$output" "$insert_page" "$_images_file" || die "$engine extraction failed"
+                extract_$engine "$input" "$output" "$insert_page" "$_images_file" "$use_layout" "$insert_image" || die "$engine extraction failed"
                 step_elapsed=$(_timer_elapsed "$step_start")
                 printf '  Extraction time: %s s\n' "$step_elapsed" >&2
             else
@@ -284,7 +301,7 @@ _cmd_to_md() {
                 for try_engine in pypdf poppler ghostscript; do
                     local step_start step_elapsed
                     step_start=$(_timer_start)
-                    extract_$try_engine "$input" "$output" "$insert_page" "$_images_file" && {
+                    extract_$try_engine "$input" "$output" "$insert_page" "$_images_file" "$use_layout" "$insert_image" && {
                         extracted=1
                         step_elapsed=$(_timer_elapsed "$step_start")
                         printf '  Extraction time (%s): %s s\n' "$try_engine" "$step_elapsed" >&2
@@ -335,6 +352,8 @@ input=""
 output=""
 engine=""          # "" = auto fallback, or: pypdf|poppler|ghostscript
 insert_page=1
+use_layout=1
+insert_image=1
 engine_count=0
 
 while [[ $# -gt 0 ]]; do
@@ -345,6 +364,10 @@ while [[ $# -gt 0 ]]; do
         --pypdf)      engine="pypdf"; engine_count=$((engine_count+1)); shift ;;
         --poppler)    engine="poppler"; engine_count=$((engine_count+1)); shift ;;
         --ghostscript|--gs) engine="ghostscript"; engine_count=$((engine_count+1)); shift ;;
+        --layout)                      use_layout=1; shift ;;
+        --no-layout)                   use_layout=0; shift ;;
+        --insert-image-placeholder)    insert_image=1; shift ;;
+        --no-insert-image-placeholder) insert_image=0; shift ;;
         --insert-page-number)      insert_page=1; shift ;;
         --no-insert-page-number)   insert_page=0; shift ;;
         -*)              die "unknown option: $1" ;;
@@ -391,7 +414,7 @@ total_start=$(_timer_start)
 
 case "$input_ext" in
     pdf|docx|pptx|odt|xlsx)
-        _cmd_to_md "$input" "$output" "$engine" "$insert_page"
+        _cmd_to_md "$input" "$output" "$engine" "$insert_page" "$use_layout" "$insert_image"
         ;;
     md)
         out_ext="$(lower_ext "$output")"
@@ -401,7 +424,7 @@ case "$input_ext" in
         esac
         ;;
     *)
-        _cmd_to_md "$input" "$output" "" "$insert_page"
+        _cmd_to_md "$input" "$output" "" "$insert_page" "$use_layout" "$insert_image"
         ;;
 esac
 
