@@ -1,6 +1,6 @@
 ---
 name: markdown
-description: Converts documents to and from Markdown. Use when the user needs to convert PDF, Word (docx), PowerPoint (pptx), OpenDocument (odt), or Excel (xlsx) files to Markdown, or convert Markdown to PDF or standalone single-file HTML. Handles formula evaluation in Excel before conversion.
+description: Converts documents to and from Markdown. Accepts local files or URLs (http/https). Use when the user needs to convert PDF, Word (docx), PowerPoint (pptx), OpenDocument (odt), or Excel (xlsx) files to Markdown, or convert Markdown to PDF or standalone single-file HTML. Handles formula evaluation in Excel before conversion.
 allowed-tools: Bash(pandoc:*) Bash(uvx:*) Bash(pdftotext:*) Bash(pdfinfo:*) Bash(gs:*)
 metadata:
   tags:
@@ -21,20 +21,36 @@ Format is auto-detected from file extensions — no subcommands needed. Use `-i 
 
 For Excel files, formulas are evaluated before conversion so computed values appear in the output rather than raw formula expressions.
 
-PDF extraction uses a fallback chain: **pypdf → poppler → ghostscript**. First successful engine is used.
+PDF extraction uses a fallback chain: **ghostscript → poppler → pypdf**. First successful engine is used.
+
+Non-PDF formats (`.docx`, `.pptx`, `.odt`, `.xlsx`) are converted to Markdown using `pandoc`.
 
 ## Usage
 
 ### Basic conversion
 
 ```bash
-# Convert any supported document to Markdown
+# Convert any supported document to Markdown (default: stdout)
 markdown.sh -i document.docx
 markdown.sh -i presentation.pptx
 markdown.sh -i report.pdf
 markdown.sh -i data.xlsx
+
+# Write to a file
 markdown.sh -i report.pdf -o out.md
 ```
+
+Markdown output goes to **stdout by default**. All timing and status messages go to stderr, making the output clean for piping or LLM consumption. Use `-o <file>` to write to a file instead.
+
+### URL input
+
+```bash
+# Convert a remote file directly (downloaded automatically)
+markdown.sh -i https://example.com/report.pdf
+markdown.sh -i https://example.com/report.pdf -o out.md
+```
+
+Input can be a local file path or an HTTP/HTTPS URL. When a URL is given, the file is downloaded to a temp file (preserving the extension for format detection) and cleaned up after conversion. Download fallback chain: **curl → wget → uvx httpx[cli] → python (urllib)**.
 
 ### Convert Markdown to PDF or HTML
 
@@ -51,13 +67,17 @@ Format is detected from the output file extension (`.pdf` or `.html`).
 ### PDF engine selection
 
 ```bash
-# Default: auto fallback chain (pypdf → poppler → ghostscript)
+# Default: auto fallback chain (ghostscript → poppler → pypdf)
 markdown.sh -i report.pdf
 
 # Force specific engines
 markdown.sh -i report.pdf --pypdf
 markdown.sh -i report.pdf --poppler
 markdown.sh -i report.pdf --gs
+
+# Use pandoc (for non-PDF: .docx, .pptx, .odt, .xlsx, etc.)
+markdown.sh -i document.docx --pandoc
+# Note: --pandoc cannot convert PDFs (pandoc doesn't support PDF input)
 ```
 
 ### Layout control
@@ -118,7 +138,8 @@ The script reports per-step and total processing time on stderr:
 
 ## Gotchas
 
-- **PDF fallback chain** — when no engine flag is given: pypdf → poppler → ghostscript. First successful engine is used. Use `--pypdf`, `--poppler`, `--gs` to force a specific engine. Flags are mutually exclusive.
+- **Non-PDF conversion** — `.docx`, `.pptx`, `.odt`, `.xlsx` files are converted via `pandoc`. Engine flags (`--pypdf`, `--poppler`, `--gs`, `--pandoc`) only apply to PDF input and are ignored for other formats.
+- **PDF fallback chain** — when no engine flag is given: ghostscript → poppler → pypdf. First successful engine is used. Use `--pypdf`, `--poppler`, `--gs`, `--pandoc` to force a specific engine. Flags are mutually exclusive.
 - **Engine capabilities**:
   - **pypdf**: ~2s, extracts text layer only (empty for scanned pages)
   - **poppler**: ~1s, preserves visual layout by default (`-layout`), raw text with `--no-layout`

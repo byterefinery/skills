@@ -5,17 +5,19 @@
 #   markdown.sh -i INPUT [-o OUTPUT] [options]   Convert document to/from Markdown
 #   markdown.sh --help
 #
+# Input can be a local file path or a URL (http/https).
 # Format is auto-detected from input/output file extensions:
 #   .pdf, .docx, .pptx, .odt, .xlsx → .md   (to Markdown)
 #   .md → .pdf                                     (to PDF)
 #   .md → .html                                    (to single-file HTML)
 #
 # Options:
-#   -i, --input <file>           Input file (required)
-#   -o, --output <file>          Output file path (default: auto-derived from input)
+#   -i, --input <file|url>       Input file or URL (required)
+#   -o, --output <file|->        Output file path, or - for stdout (default: stdout)
 #   --pypdf                      Use pypdf engine (fast, text-layer only PDFs)
 #   --poppler                    Use poppler/pdftotext engine
 #   --ghostscript, --gs          Use ghostscript engine
+#   --pandoc                     Use pandoc for conversion
 #   --layout                     Preserve visual layout in PDF text (default: on)
 #   --no-layout                  Disable layout preservation in PDF text
 #   --insert-image-placeholder   Insert <!-- image --> on pages with images (default: on)
@@ -33,16 +35,90 @@ cleanup_md() {
     sed -i 's/^[[:space:]]*//;s/[[:space:]]*$//' "$1"
 }
 
+# Check if a string looks like a URL
+is_url() {
+    [[ "$1" =~ ^https?:// ]]
+}
+
+# Download a URL to a local temp file. Fallback: curl → wget → uvx httpx[cli] → python.
+# Prints the local path to stdout.
+# The temp file uses the same extension as the URL for format detection.
+download_url() {
+    local url="$1"
+    # Extract filename from URL to preserve extension
+    local _url_path
+    _url_path="$(printf '%s' "$url" | sed 's|.*/||; s|\?.*||')"
+    local _url_ext="${_url_path##*.}"
+    # If extension equals the filename, there's no dot — default to no extension
+    [[ "$_url_ext" == "$_url_path" ]] && _url_ext=""
+    local _suffix=""
+    [[ -n "$_url_ext" ]] && _suffix=".${_url_ext,,}"
+
+    local tmp
+    tmp="$(mktemp --suffix="$_suffix")"
+
+    if command -v curl &>/dev/null; then
+        printf '  Downloading (curl)...
+' >&2
+        curl -fSL -o "$tmp" "$url" 2>/dev/null && { printf '%s' "$tmp"; return 0; }
+        rm -f "$tmp"
+    fi
+
+    if command -v wget &>/dev/null; then
+        printf '  Downloading (wget)...
+' >&2
+        tmp="$(mktemp --suffix="$_suffix")"
+        wget -q -O "$tmp" "$url" 2>/dev/null && { printf '%s' "$tmp"; return 0; }
+        rm -f "$tmp"
+    fi
+
+    if command -v uvx &>/dev/null; then
+        printf '  Downloading (uvx httpx[cli])...
+' >&2
+        tmp="$(mktemp --suffix="$_suffix")"
+        uvx 'httpx[cli]' get --download --download-dir "$(dirname "$tmp")" --exit-code "%status_code" "$url" >/dev/null 2>&1
+        # httpx downloads to a file based on Content-Disposition or URL basename
+        local _httpx_file
+        _httpx_file="$(ls -t "$(dirname "$tmp")" 2>/dev/null | head -1)"
+        if [[ -n "$_httpx_file" ]] && [[ -f "$(dirname "$tmp")/$_httpx_file" ]]; then
+            mv "$(dirname "$tmp")/$_httpx_file" "$tmp" 2>/dev/null && { printf '%s' "$tmp"; return 0; }
+        fi
+        rm -f "$tmp"
+    fi
+
+    if command -v python3 &>/dev/null || command -v python &>/dev/null; then
+        local _py="${PYTHON:-python3}"
+        [[ ! -x "$(command -v python3 2>/dev/null)" ]] && _py="python"
+        printf '  Downloading (python)...
+' >&2
+        tmp="$(mktemp --suffix="$_suffix")"
+        "$_py" -c "
+import sys, urllib.request
+try:
+    req = urllib.request.Request(sys.argv[1], headers={'User-Agent': 'Mozilla/5.0'})
+    with urllib.request.urlopen(req, timeout=60) as resp, open(sys.argv[2], 'wb') as out:
+        out.write(resp.read())
+except Exception as e:
+    print(f'Download failed: {e}', file=sys.stderr)
+    sys.exit(1)
+" "$url" "$tmp" 2>/dev/null && { printf '%s' "$tmp"; return 0; }
+        rm -f "$tmp"
+    fi
+
+    return 1
+}
+
 usage() { cat <<EOF
 Usage:
   markdown.sh -i <input> [-o <output>] [options]
 
 Options:
-  -i, --input <file>           Input file (required)
-  -o, --output <file>          Output file path (default: auto-derived from input)
+  -i, --input <file|url>       Input file or URL (required)
+  -o, --output <file|->        Output file path, or - for stdout (default: stdout)
   --pypdf                      Use pypdf engine (fast, text-layer only PDFs)
   --poppler                    Use poppler/pdftotext engine
   --ghostscript, --gs          Use ghostscript engine
+  --pandoc                     Use pandoc for conversion
   --layout                     Preserve visual layout in PDF text (default: on)
   --no-layout                  Disable layout preservation
   --insert-image-placeholder   Insert <!-- image --> on pages with images (default: on)
@@ -62,7 +138,7 @@ PDF extraction engines:
   ghostscript — extracts text layer via txtwrite device (empty for scanned pages)
 
 PDF extraction fallback chain (when no engine flag given):
-  pypdf → poppler → ghostscript
+  ghostscript → poppler → pypdf
 
 Excel files are evaluated with 'uvx formulas[all] calc' before conversion
 to ensure formula results appear as computed values.
@@ -259,27 +335,49 @@ extract_ghostscript() {
 
 _cmd_to_md() {
     local input="$1" output="$2" engine="$3" insert_page="$4" use_layout="$5" insert_image="$6"
+    local _stdout_output=0
+
+    # If output is "-", write to a temp file then cat to stdout
+    if [[ "$output" == "-" ]]; then
+        _stdout_output=1
+        output="$(mktemp --suffix=.md)"
+    fi
 
     local ext
     ext="$(lower_ext "$input")"
 
     case "$ext" in
         xlsx)
-            local tmp
-            tmp="$(mktemp --suffix=.xlsx)"
-            trap 'rm -f "$tmp"' EXIT
-            printf '  Evaluating formulas...\n' >&2
-            local step_start step_elapsed
-            step_start=$(_timer_start)
-            uvx formulas[all] calc "$input" \
-                --output-format excel \
-                --output-file "$tmp"
-            step_elapsed=$(_timer_elapsed "$step_start")
-            printf '  Formula evaluation: %s s\n' "$step_elapsed" >&2
+            local _xlsx_input="$input"
+            # Try formula evaluation first
+            if command -v uvx &>/dev/null; then
+                local _xlsx_tmp_dir
+                _xlsx_tmp_dir="$(mktemp -d)"
+                printf '  Evaluating formulas...\n' >&2
+                local step_start step_elapsed
+                step_start=$(_timer_start)
+                if uvx formulas[all] calc "$input" \
+                    --output-format excel \
+                    --output-dir "$_xlsx_tmp_dir" 2>/dev/null; then
+                    step_elapsed=$(_timer_elapsed "$step_start")
+                    printf '  Formula evaluation: %s s\n' "$step_elapsed" >&2
+                    # formulas may output a file with a different name; find the xlsx
+                    local _found_xlsx
+                    _found_xlsx="$(find "$_xlsx_tmp_dir" -maxdepth 2 -name '*.xlsx' -type f | head -1)"
+                    if [[ -n "$_found_xlsx" ]] && [[ -f "$_found_xlsx" ]]; then
+                        _xlsx_input="$_found_xlsx"
+                    fi
+                else
+                    step_elapsed=$(_timer_elapsed "$step_start")
+                    printf '  Formula evaluation: %s s (skipped — using original file)\n' "$step_elapsed" >&2
+                fi
+                rm -rf "$_xlsx_tmp_dir"
+            fi
 
             printf '  Converting to Markdown...\n' >&2
+            local step_start step_elapsed
             step_start=$(_timer_start)
-            pandoc -f xlsx -t markdown "$tmp" -o "$output"
+            pandoc -f xlsx -t markdown "$_xlsx_input" -o "$output"
             step_elapsed=$(_timer_elapsed "$step_start")
             printf '  Pandoc conversion: %s s\n' "$step_elapsed" >&2
             ;;
@@ -298,7 +396,7 @@ _cmd_to_md() {
                 printf '  Extraction time: %s s\n' "$step_elapsed" >&2
             else
                 local extracted=0
-                for try_engine in pypdf poppler ghostscript; do
+                for try_engine in ghostscript poppler pypdf; do
                     local step_start step_elapsed
                     step_start=$(_timer_start)
                     extract_$try_engine "$input" "$output" "$insert_page" "$_images_file" "$use_layout" "$insert_image" && {
@@ -308,7 +406,7 @@ _cmd_to_md() {
                         break
                     }
                 done
-                [[ "$extracted" -eq 1 ]] || die "no PDF engine available (tried: pypdf, poppler, ghostscript)"
+                [[ "$extracted" -eq 1 ]] || die "no PDF engine available (tried: ghostscript, poppler, pypdf)"
             fi
             rm -f "$_images_file"
             ;;
@@ -328,7 +426,13 @@ _cmd_to_md() {
             ;;
     esac
     cleanup_md "$output"
-    printf '  → %s\n' "$output" >&2
+
+    if [[ "$_stdout_output" -eq 1 ]]; then
+        cat "$output"
+        rm -f "$output"
+    else
+        printf '  → %s\n' "$output" >&2
+    fi
 }
 
 _cmd_to_pdf() {
@@ -350,7 +454,7 @@ _cmd_to_html() {
 # Parse arguments
 input=""
 output=""
-engine=""          # "" = auto fallback, or: pypdf|poppler|ghostscript
+engine=""          # "" = auto fallback, or: pypdf|poppler|ghostscript|pandoc
 insert_page=1
 use_layout=1
 insert_image=1
@@ -364,6 +468,7 @@ while [[ $# -gt 0 ]]; do
         --pypdf)      engine="pypdf"; engine_count=$((engine_count+1)); shift ;;
         --poppler)    engine="poppler"; engine_count=$((engine_count+1)); shift ;;
         --ghostscript|--gs) engine="ghostscript"; engine_count=$((engine_count+1)); shift ;;
+        --pandoc)     engine="pandoc"; engine_count=$((engine_count+1)); shift ;;
         --layout)                      use_layout=1; shift ;;
         --no-layout)                   use_layout=0; shift ;;
         --insert-image-placeholder)    insert_image=1; shift ;;
@@ -375,23 +480,48 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-[[ -n "$input" ]] || die "missing input file (use -i <file>)"
+[[ -n "$input" ]] || die "missing input (use -i <file|url>)"
+
+# Download if input is a URL
+_original_input="$input"
+if is_url "$input"; then
+    input="$(download_url "$input")" || die "failed to download: $_original_input"
+    [[ -f "$input" ]] || die "download produced no file: $_original_input"
+    printf '  Downloaded: %s\n' "$input" >&2
+    # Clean up temp file on exit
+    trap 'rm -f "$input"' EXIT
+fi
+
 [[ -f "$input" ]] || die "file not found: $input"
 [[ "$engine_count" -le 1 ]] || die "engine flags are mutually exclusive"
+
+# Validate engine compatibility with file type
+input_ext="$(lower_ext "$input")"
+case "$engine" in
+    pypdf|poppler|ghostscript)
+        [[ "$input_ext" == "pdf" ]] || die "$engine engine is for PDF only (input is .$input_ext — use --pandoc or omit engine flag)"
+        ;;
+    pandoc)
+        [[ "$input_ext" != "pdf" ]] || die "pandoc cannot convert from PDF (use --gs, --poppler, or --pypdf)"
+        ;;
+esac
 
 # Detect conversion direction from extensions
 input_ext="$(lower_ext "$input")"
 
 case "$input_ext" in
     pdf|docx|pptx|odt|xlsx)
-        # To Markdown
-        [[ -n "$output" ]] || output="$(derive_output "$input" md)"
-        out_ext="$(lower_ext "$output")"
-        [[ "$out_ext" == "md" ]] || {
-            # Auto-fix: if user gave wrong extension, use .md
-            output="$(derive_output "$input" md)"
-            printf '  Note: output extension changed to .md for to-Markdown conversion\n' >&2
-        }
+        # To Markdown — default is stdout
+        [[ -n "$output" ]] || output="-"
+        # -o - means stdout
+        if [[ "$output" != "-" ]]; then
+            out_ext="$(lower_ext "$output")"
+            [[ "$out_ext" == "md" ]] || {
+                # Auto-fix: if user gave wrong extension, use .md
+                output="$(derive_output "$input" md)"
+                printf '  Note: output extension changed to .md for to-Markdown conversion\n' >&2
+            }
+        fi
         ;;
     md)
         # From Markdown — detect target from output extension
@@ -404,8 +534,8 @@ case "$input_ext" in
         esac
         ;;
     *)
-        # Unknown input — try to convert to Markdown via pandoc
-        [[ -n "$output" ]] || output="$(derive_output "$input" md)"
+        # Unknown input — try to convert to Markdown via pandoc, default stdout
+        [[ -n "$output" ]] || output="-"
         ;;
 esac
 
