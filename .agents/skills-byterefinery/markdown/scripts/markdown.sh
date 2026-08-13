@@ -6,24 +6,18 @@
 #   markdown.sh --help
 #
 # Format is auto-detected from input/output file extensions:
-#   .pdf, .docx, .pptx, .odt, .xlsx, images → .md   (to Markdown)
+#   .pdf, .docx, .pptx, .odt, .xlsx → .md   (to Markdown)
 #   .md → .pdf                                     (to PDF)
 #   .md → .html                                    (to single-file HTML)
 #
 # Options:
 #   -i, --input <file>           Input file (required)
 #   -o, --output <file>          Output file path (default: auto-derived from input)
-#   --layout                     Use docling standard pipeline with layout detection (Heron/ONNX)
-#   --ocr                        Use docling standard pipeline with OCR (RapidOCR/ONNX)
-#   --vlm                        Use docling VLM pipeline (Granite-Docling-258M)
-#   --docling                    Use docling standard pipeline (default, fast, no OCR)
 #   --pypdf                      Use pypdf engine (fast, text-layer only PDFs)
 #   --poppler                    Use poppler/pdftotext engine
 #   --ghostscript, --gs          Use ghostscript engine
 #   --insert-page-number         Insert <!-- page N --> comments (default: on)
 #   --no-insert-page-number      Suppress page comments
-#   --insert-ocr-page-number     Insert <!-- ocr N --> comments (default: on)
-#   --no-ocr-page-number         Suppress OCR comments
 set -euo pipefail
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -42,40 +36,25 @@ Usage:
 Options:
   -i, --input <file>           Input file (required)
   -o, --output <file>          Output file path (default: auto-derived from input)
-  --layout                     Docling standard pipeline with layout detection (Heron/ONNX)
-  --ocr                        Docling standard pipeline + OCR (RapidOCR/ONNX)
-  --vlm                        Docling VLM pipeline (Granite-Docling-258M)
-  --docling                    Docling standard pipeline (default, fast, no OCR)
   --pypdf                      Use pypdf engine (fast, text-layer only PDFs)
   --poppler                    Use poppler/pdftotext engine
   --ghostscript, --gs          Use ghostscript engine
   --insert-page-number         Insert <!-- page N --> comments (default: on)
   --no-insert-page-number      Suppress page comments
-  --insert-ocr-page-number     Insert <!-- ocr N --> comments (default: on)
-  --no-ocr-page-number         Suppress OCR comments
   --help                       Show this help message
 
 Format detection (from file extensions):
-  To Markdown:  .pdf .docx .pptx .odt .xlsx .png .jpg .jpeg .bmp .webp .tiff → .md
+  To Markdown:  .pdf .docx .pptx .odt .xlsx → .md
   To PDF:       .md → .pdf
   To HTML:      .md → .html
 
 PDF extraction engines:
-  docling (default)  — Standard pipeline, Heron layout detection (ONNX),
-    extracts text/tables from PDF text layer, fast and lightweight
-  docling-layout (--layout) — Same as default, explicitly enables layout detection
-  docling-ocr (--ocr)  — Standard pipeline + RapidOCR (ONNX), handles scanned
-    pages via OCR, moderate speed
-  docling-vlm (--vlm)  — VLM pipeline with Granite-Docling-258M, full visual
-    understanding, handles scanned pages, slower but best quality
   pypdf — fast, extracts text layer only (empty for scanned pages)
   poppler — fast, preserves layout with -layout flag (empty for scanned pages)
   ghostscript — extracts text layer via txtwrite device (empty for scanned pages)
 
 PDF extraction fallback chain (when no engine flag given):
-  docling → pypdf → poppler → ghostscript
-
-Note: --ocr and --vlm are mutually exclusive. --layout is optional.
+  pypdf → poppler → ghostscript
 
 Excel files are evaluated with 'uvx formulas[all] calc' before conversion
 to ensure formula results appear as computed values.
@@ -116,57 +95,14 @@ _timer_elapsed() {
 }
 
 # ── PDF Extraction Engines ──────────────────────────────────────────────────
-# Each: extract_<engine> <input> <output> <insert_page> <insert_ocr> [<is_image>]
+# Each: extract_<engine> <input> <output> <insert_page> <images_file>
 # Returns 0 on success, 1 on failure/skip.
-
-extract_docling() {
-    local input="$1" output="$2" insert_page="$3" insert_ocr="$4"
-    local is_image="${5:-0}"
-    local mode="${6:-standard}"   # standard | layout | ocr | vlm
-
-    if ! command -v uvx &>/dev/null; then
-        printf '  Skipping docling (uvx not found)\n' >&2
-        return 1
-    fi
-
-    local _script
-    _script="$(dirname "$0")/docling_extract.py"
-
-    # Build mode flags
-    local _mode_flags=()
-    case "$mode" in
-        ocr)  _mode_flags+=(--ocr) ;;
-        vlm)  _mode_flags+=(--vlm) ;;
-        standard|layout) ;; # default: standard pipeline, ONNX layout, no OCR
-    esac
-
-    # Run Python helper (uses ONNX Runtime for layout by default)
-    # OCR mode needs rapidocr-onnxruntime as extra dep
-    local _uv_cmd
-    if [[ "$mode" == "ocr" ]]; then
-        _uv_cmd="uv run --with docling --with onnxruntime --with rapidocr-onnxruntime python3"
-    elif [[ "$mode" == "vlm" ]]; then
-        _uv_cmd="uv run --with docling python3"
-    else
-        _uv_cmd="uv run --with docling --with onnxruntime python3"
-    fi
-
-    if ! $_uv_cmd "$_script" "$input" -o "$output" "${_mode_flags[@]}" 2>&1; then
-        printf '  Skipping docling (conversion failed)\n' >&2
-        return 1
-    fi
-
-    if [[ ! -s "$output" ]]; then
-        printf '  Skipping docling (empty output)\n' >&2
-        return 1
-    fi
-
-    printf '  → docling (%s)\n' "$mode" >&2
-    return 0
-}
+#
+# images_file: path to a file listing page numbers with images (one per line).
+#              If the file exists and the current page is listed, <!-- image --> is inserted.
 
 extract_pypdf() {
-    local input="$1" output="$2" insert_page="$3" insert_ocr="$4"
+    local input="$1" output="$2" insert_page="$3" images_file="$4"
 
     if ! command -v uvx &>/dev/null; then
         printf '  Skipping pypdf (uvx not found)\n' >&2
@@ -175,6 +111,12 @@ extract_pypdf() {
 
     printf '  Trying pypdf...\n' >&2
 
+    # Build image page set for Python
+    local _img_pages="[]"
+    if [[ -s "$images_file" ]]; then
+        _img_pages="$(awk 'BEGIN{printf "["} NR>1{printf ","} {printf "%d", $1} END{printf "]"}' "$images_file")"
+    fi
+
     uvx --from pypdf python3 -c "
 import sys
 from pypdf import PdfReader
@@ -182,10 +124,25 @@ from pypdf import PdfReader
 reader = PdfReader('$input')
 pages = reader.pages
 insert_page = $insert_page
+image_pages = set($_img_pages)
 
 for i, page in enumerate(pages, 1):
     if insert_page:
         print(f'<!-- page {i} -->')
+    has_image = i in image_pages
+    # Also check page resources for embedded images
+    if not has_image:
+        resources = page.get('/Resources', {})
+        if resources:
+            xobjects = resources.get('/XObject', {})
+            if xobjects:
+                for xname in xobjects:
+                    xobj = xobjects[xname]
+                    if hasattr(xobj, 'get') and xobj.get('/Subtype') == '/Image':
+                        has_image = True
+                        break
+    if has_image:
+        print('<!-- image -->')
     text = page.extract_text()
     if text:
         print(text)
@@ -204,7 +161,7 @@ for i, page in enumerate(pages, 1):
 }
 
 extract_poppler() {
-    local input="$1" output="$2" insert_page="$3" insert_ocr="$4"
+    local input="$1" output="$2" insert_page="$3" images_file="$4"
 
     check_tool pdftotext poppler || return 1
     check_tool pdfinfo pdfinfo || return 1
@@ -219,6 +176,9 @@ extract_poppler() {
     local p
     for (( p=1; p<=pages; p++ )); do
         [[ "$insert_page" == "1" ]] && printf '<!-- page %d -->\n' "$p" >> "$output"
+        if [[ -s "$images_file" ]] && grep -qx "$p" "$images_file" 2>/dev/null; then
+            printf '<!-- image -->\n' >> "$output"
+        fi
         pdftotext -layout -f "$p" -l "$p" "$input" - 2>/dev/null | tr -d '\f' >> "$output"
         printf '\n' >> "$output"
     done
@@ -233,7 +193,7 @@ extract_poppler() {
 }
 
 extract_ghostscript() {
-    local input="$1" output="$2" insert_page="$3" insert_ocr="$4"
+    local input="$1" output="$2" insert_page="$3" images_file="$4"
 
     check_tool gs ghostscript || return 1
 
@@ -255,6 +215,9 @@ extract_ghostscript() {
     local p
     for (( p=1; p<=pages; p++ )); do
         [[ "$insert_page" == "1" ]] && printf '<!-- page %d -->\n' "$p" >> "$output"
+        if [[ -s "$images_file" ]] && grep -qx "$p" "$images_file" 2>/dev/null; then
+            printf '<!-- image -->\n' >> "$output"
+        fi
         gs -sDEVICE=txtwrite -dFirstPage="$p" -dLastPage="$p" \
             -dSAFER -dBATCH -dNOPAUSE -sOutputFile="$_gs_tmp" "$input" >/dev/null 2>&1
         if [[ -s "$_gs_tmp" ]]; then
@@ -278,7 +241,7 @@ extract_ghostscript() {
 # ── Conversion functions ────────────────────────────────────────────────────
 
 _cmd_to_md() {
-    local input="$1" output="$2" engine="$3" insert_page="$4" insert_ocr="$5"
+    local input="$1" output="$2" engine="$3" insert_page="$4"
 
     local ext
     ext="$(lower_ext "$input")"
@@ -304,51 +267,33 @@ _cmd_to_md() {
             printf '  Pandoc conversion: %s s\n' "$step_elapsed" >&2
             ;;
         pdf)
+            # Detect pages with images (pdfimages lists: page num type width height ...
+            local _images_file
+            _images_file="$(mktemp --suffix=.img)"
+            if command -v pdfimages &>/dev/null; then
+                pdfimages -list "$input" 2>/dev/null | awk 'NR>1{print $1}' | sort -un > "$_images_file" || true
+            fi
             if [[ -n "$engine" ]]; then
                 local step_start step_elapsed
                 step_start=$(_timer_start)
-                case "$engine" in
-                    docling)       extract_docling "$input" "$output" "$insert_page" "$insert_ocr" 0 standard || die "docling extraction failed" ;;
-                    docling-layout) extract_docling "$input" "$output" "$insert_page" "$insert_ocr" 0 layout || die "docling-layout extraction failed" ;;
-                    docling-ocr)   extract_docling "$input" "$output" "$insert_page" "$insert_ocr" 0 ocr || die "docling-ocr extraction failed" ;;
-                    docling-vlm)   extract_docling "$input" "$output" "$insert_page" "$insert_ocr" 0 vlm || die "docling-vlm extraction failed" ;;
-                    *)             extract_$engine "$input" "$output" "$insert_page" "$insert_ocr" || die "$engine extraction failed" ;;
-                esac
+                extract_$engine "$input" "$output" "$insert_page" "$_images_file" || die "$engine extraction failed"
                 step_elapsed=$(_timer_elapsed "$step_start")
                 printf '  Extraction time: %s s\n' "$step_elapsed" >&2
             else
                 local extracted=0
-                for try_engine in docling pypdf poppler ghostscript; do
+                for try_engine in pypdf poppler ghostscript; do
                     local step_start step_elapsed
                     step_start=$(_timer_start)
-                    case "$try_engine" in
-                        docling) extract_docling "$input" "$output" "$insert_page" "$insert_ocr" 0 standard ;;
-                        *)       extract_$try_engine "$input" "$output" "$insert_page" "$insert_ocr" ;;
-                    esac && {
+                    extract_$try_engine "$input" "$output" "$insert_page" "$_images_file" && {
                         extracted=1
                         step_elapsed=$(_timer_elapsed "$step_start")
                         printf '  Extraction time (%s): %s s\n' "$try_engine" "$step_elapsed" >&2
                         break
                     }
                 done
-                [[ "$extracted" -eq 1 ]] || die "no PDF engine available (tried: docling, pypdf, poppler, ghostscript)"
+                [[ "$extracted" -eq 1 ]] || die "no PDF engine available (tried: pypdf, poppler, ghostscript)"
             fi
-            ;;
-        png|jpg|jpeg|bmp|webp|tiff)
-            [[ "$engine" == "docling" || "$engine" == "docling-ocr" || "$engine" == "docling-vlm" || -z "$engine" ]] || die "image conversion requires --docling, --ocr, or --vlm"
-            local step_start step_elapsed
-            step_start=$(_timer_start)
-            local _img_mode=standard
-            case "$engine" in
-                docling-ocr) _img_mode=ocr ;;
-                docling-vlm) _img_mode=vlm ;;
-                docling|"")  _img_mode=standard ;;
-            esac
-            if ! extract_docling "$input" "$output" "$insert_page" "$insert_ocr" 1 "$_img_mode"; then
-                die "image conversion requires docling (not available or failed)"
-            fi
-            step_elapsed=$(_timer_elapsed "$step_start")
-            printf '  Extraction time: %s s\n' "$step_elapsed" >&2
+            rm -f "$_images_file"
             ;;
         docx|pptx|odt)
             local step_start step_elapsed
@@ -388,9 +333,8 @@ _cmd_to_html() {
 # Parse arguments
 input=""
 output=""
-engine=""          # "" = auto fallback, or: docling|docling-layout|docling-ocr|docling-vlm|pypdf|poppler|ghostscript
+engine=""          # "" = auto fallback, or: pypdf|poppler|ghostscript
 insert_page=1
-insert_ocr=1
 engine_count=0
 
 while [[ $# -gt 0 ]]; do
@@ -398,17 +342,11 @@ while [[ $# -gt 0 ]]; do
         --help|-h)    usage; exit 0 ;;
         -i|--input)   input="$2"; shift 2 ;;
         -o|--output)  output="$2"; shift 2 ;;
-        --docling)    engine="docling"; engine_count=$((engine_count+1)); shift ;;
-        --layout)     engine="docling-layout"; engine_count=$((engine_count+1)); shift ;;
-        --ocr)        engine="docling-ocr"; engine_count=$((engine_count+1)); shift ;;
-        --vlm)        engine="docling-vlm"; engine_count=$((engine_count+1)); shift ;;
         --pypdf)      engine="pypdf"; engine_count=$((engine_count+1)); shift ;;
         --poppler)    engine="poppler"; engine_count=$((engine_count+1)); shift ;;
         --ghostscript|--gs) engine="ghostscript"; engine_count=$((engine_count+1)); shift ;;
         --insert-page-number)      insert_page=1; shift ;;
         --no-insert-page-number)   insert_page=0; shift ;;
-        --insert-ocr-page-number)  insert_ocr=1; shift ;;
-        --no-ocr-page-number)      insert_ocr=0; shift ;;
         -*)              die "unknown option: $1" ;;
         *)              die "unexpected argument: $1" ;;
     esac
@@ -422,7 +360,7 @@ done
 input_ext="$(lower_ext "$input")"
 
 case "$input_ext" in
-    pdf|docx|pptx|odt|xlsx|png|jpg|jpeg|bmp|webp|tiff)
+    pdf|docx|pptx|odt|xlsx)
         # To Markdown
         [[ -n "$output" ]] || output="$(derive_output "$input" md)"
         out_ext="$(lower_ext "$output")"
@@ -452,8 +390,8 @@ esac
 total_start=$(_timer_start)
 
 case "$input_ext" in
-    pdf|docx|pptx|odt|xlsx|png|jpg|jpeg|bmp|webp|tiff)
-        _cmd_to_md "$input" "$output" "$engine" "$insert_page" "$insert_ocr"
+    pdf|docx|pptx|odt|xlsx)
+        _cmd_to_md "$input" "$output" "$engine" "$insert_page"
         ;;
     md)
         out_ext="$(lower_ext "$output")"
@@ -463,7 +401,7 @@ case "$input_ext" in
         esac
         ;;
     *)
-        _cmd_to_md "$input" "$output" "" "$insert_page" "$insert_ocr"
+        _cmd_to_md "$input" "$output" "" "$insert_page"
         ;;
 esac
 
