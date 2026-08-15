@@ -1,6 +1,6 @@
 ---
 name: skman
-description: Introduces the Agent Skills System — a standardized, lightweight, open format for extending AI agent capabilities with specialized knowledge and workflows. Use for scaffolding, validating, and inspecting agent skills (SKILL.md files and other skill's files and directories).
+description: Introduces the Agent Skills System — a standardized, lightweight, open format for extending AI agent capabilities with specialized knowledge and workflows. Use for scaffolding, validating, and inspecting agent skills (SKILL.md files and other skills' files and directories).
 license: Apache-2.0
 compatibility: Requires uv on PATH. PyYAML is declared in the PEP 723 header and auto-resolved by uv — no pip, no local venv.
 metadata:
@@ -32,7 +32,7 @@ Agent Skills are a lightweight, open format for extending AI agent capabilities 
 ```bash
 # Quick reference — details per subcommand below
 skman.py create <name> "<description>" [--with-scripts] [-o ./skills]
-skman.py validate ./my-skill            # single skill
+skman.py validate ./my-skill [--strict] # single skill
 skman.py validate .agents/skills        # whole collection
 skman.py info ./my-skill [--json]
 skman.py generate
@@ -50,19 +50,6 @@ skman.py create my-skill "Desc" --with-scripts --lang bash   # shell wrapper
 ```
 
 Validates name and description (format, length, no `:`) before creating files. `--url` extracts name/version from GitHub, PyPI, npm, crates.io, GitLab, RubyGems URLs; the positional `name` and an explicit `--version` take precedence. LLM fallback: set `SKMAN_LLM_RESPONSE='{"version": "X.Y.Z"}'` env var. Note `--url` only extracts metadata — for code repositories, run the Creating a skill from a repository workflow first (clone the repo, then study it).
-
-### Validate
-
-Run the built-in validator on a single skill or an entire collection:
-
-```bash
-# Single skill
-skman.py validate ./my-skill
-skman.py validate --strict ./my-skill
-
-# All skills in a collection directory
-skman.py validate .agents/skills
-```
 
 ## Skill Format
 
@@ -127,10 +114,7 @@ Follow these steps in order:
      ```
      Each line: link to the file, a dash, brief topic summary. Local `references/NN-topic.md` files and external URLs both work.
 
-4. **Create scripts** — only when the user explicitly requests them. Two conventions:
-   - **Default (Python with dependencies):** `scripts/<name>.py` — single file, PEP 723 shebang (`#!/usr/bin/env -S uv run --script`), direct execution. Requires `uv` on PATH.
-   - **Shell mode (no PyPI deps):** `scripts/<name>.sh` + `scripts/_<name>.py` — bash wrapper delegates to underscore-prefixed Python script directly. Requires only `python` on PATH.
-   Other-language scripts use whatever the user specifies — never assume one. Scripts are **executed** (not loaded into context); include `--help` at every level. Scaffold with `--with-scripts`.
+4. **Create scripts** — only when the user explicitly requests them. Never assume a language — ask or wait for a suggestion. Conventions (default `scripts/<name>.py` with PEP 723 shebang; shell mode `scripts/<name>.sh` + `_<name>.py` for no-PyPI-deps) are in Scripting below. Scripts are **executed**, not loaded into context; include `--help` at every level. Scaffold with `--with-scripts`.
 
 5. **Validate** — run the validation script:
    ```bash
@@ -149,7 +133,7 @@ Use this workflow when creating or updating a skill whose source material is a c
 git clone --depth 1 <url> /tmp/<name>
 ```
 
-Never fetch individual files over the network (slow and rate-limited); a single clone gives the full tree. Shallow (`--depth 1`) is enough — skill creation needs the current tree, not history. Clean up the temp directory when done.
+Never fetch individual files over the network (slow and rate-limited); a single clone gives the full tree. Clean up the temp directory when done.
 
 Then study the repo in this order. Documentation is the primary source; source code is the fallback — documented intent maps directly onto skill content and costs far fewer tokens than raw code.
 
@@ -177,7 +161,7 @@ Checks performed:
 - Body: starts with a level-1 heading; token estimation warning (>5000 tokens)
 - H1 format `# <name>` or `# <name> <version>` (errors on mismatch)
 - `## Overview` presence (warns if missing); `## Usage`, `## Gotchas`, `## References` are truly optional (never warn)
-- Scripts: `<name>.sh` must be executable (warns); body must reference `<name>.sh`, not `./<name>.sh`, outside fenced code blocks (warns)
+- Scripts: entry scripts `<name>.py` and `<name>.sh` must be executable (warns); body must reference `<name>.sh`, not `./<name>.sh`, outside fenced code blocks (warns)
 
 ## Best Practices
 
@@ -190,7 +174,7 @@ Checks performed:
 - **Default entry point is `scripts/<name>.py`** — Python with PEP 723 shebang, direct execution via `uv run --script`. No bash wrapper needed.
 - **Shell mode (on request):** `scripts/<name>.sh` + `scripts/_<name>.py` — bash wrapper delegates to underscore-prefixed Python. Used when the script has no PyPI dependencies (no `uv run` needed).
 - **Dependent scripts use whatever language the user specifies** — Python, JS (Node/Bun/Deno), Lua, Bash, or anything else. Never assume a language; ask the user or wait for their suggestion
-- **Python scripts always use `uv run --script`** — every Python script uses the PEP 723 inline metadata block so `uv run` resolves dependencies automatically (no `pip install`, no `requirements.txt`, no manual venv). Declare `requires-python` and `dependencies` inside the `# /// script ... # ///` block; see [01-python-scripts](references/01-python-scripts.md) for the full pattern.
+- **Python scripts always use `uv run --script`** — declare `requires-python` and `dependencies` in the PEP 723 `# /// script ... # ///` block so `uv run` resolves them automatically (no `pip install`, no `requirements.txt`, no venv). Full pattern in [01-python-scripts](references/01-python-scripts.md).
 - Any libraries, frameworks, or dependencies are allowed when the user explicitly requests them
 
 ### Match Specificity to Task Fragility

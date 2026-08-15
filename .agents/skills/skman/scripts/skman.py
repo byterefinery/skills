@@ -553,15 +553,27 @@ def _check_reference_files(skill_dir):
 
 
 def _check_script_permissions(skill_dir, fm_name):
-    """Check that scripts/<name>.sh is executable, if present."""
+    """Check that direct-entry scripts are executable, if present.
+
+    Checks scripts/<name>.py (default mode, shebang entry point) and
+    scripts/<name>.sh (shell mode wrapper). Underscore-prefixed scripts
+    (_<name>.py) are invoked via an interpreter, so their bit is not
+    checked.
+    """
     if not fm_name:
         return []
-    sh_path = os.path.join(skill_dir, 'scripts', f'{fm_name}.sh')
-    if not os.path.isfile(sh_path):
-        return []
-    if os.access(sh_path, os.X_OK):
-        return [("PASS", f"scripts/{fm_name}.sh is executable")]
-    return [("WARN", f"scripts/{fm_name}.sh is not executable (run chmod +x)")]
+    results = []
+    for ext in ('.py', '.sh'):
+        path = os.path.join(skill_dir, 'scripts', f'{fm_name}{ext}')
+        if not os.path.isfile(path):
+            continue
+        if os.access(path, os.X_OK):
+            results.append(("PASS", f"scripts/{fm_name}{ext} is executable"))
+        else:
+            results.append(
+                ("WARN", f"scripts/{fm_name}{ext} is not executable (run chmod +x)")
+            )
+    return results
 
 
 def _check_script_usage_refs(body, fm_name):
