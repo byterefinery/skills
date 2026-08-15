@@ -3,7 +3,6 @@ name: nix-2-35-1
 description: Nix 2.35.1 — the purely functional package manager. Use for building, running, developing, and managing software with Nix expressions, flakes, derivations, and the Nix store. Covers `nix build`, `nix run`, `nix shell`, `nix develop`, `nix profile`, `nix search`, `nix flake`, store operations, garbage collection, and the Nix language (types, operators, scoping, string interpolation, derivations).
 license: LGPL-2.1-only
 compatibility: Requires Nix 2.35.1. Flakes and `nix` commands require `--experimental-features nix-command flakes` or `experimental-features = nix-command flakes` in config.
-allowed-tools: Bash(nix) Bash(git) Read
 metadata:
   tags:
     - package-manager

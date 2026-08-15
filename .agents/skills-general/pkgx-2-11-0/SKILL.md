@@ -2,7 +2,6 @@
 name: pkgx-2-11-0
 description: pkgx 2.11.0 — a standalone binary that runs any Open Source tool on demand without installing it system-wide. Use when the user needs to run CLI tools (Node, Python, Deno, cargo, git, etc.) without installing them, run specific versions of tools, use `+pkg` syntax to inject dependencies into environments, write portable scripts with pkgx shebangs, manage downloaded packages with mash scripts, or set up CI/CD with pkgx. Covers version pinning (@, ^, ~, semver ranges), disambiguation, environment injection via eval, PKGX_DIR for virtual environments, and the broader pkgx ecosystem (dev, pkgm, mash, pkgo).
 compatibility: Requires macOS >= 11 (Intel/Apple Silicon) or Linux (glibc >= 2.28, libgcc). Windows 10+ experimental. Needs `pkgx` on PATH.
-allowed-tools: Bash(pkgx) Bash(curl) Bash(eval) Bash(brew) Read
 metadata:
   tags:
     - package-manager

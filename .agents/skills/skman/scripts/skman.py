@@ -610,8 +610,7 @@ def _validate_text_fields(fm):
     """Return list of error strings for text-only frontmatter fields.
 
     Text-only fields are the top-level scalar string values (name,
-    description, license, compatibility, allowed-tools, and any unknown
-    string field). They must not contain a ':' character — colons are YAML
+    description, license, compatibility, and any unknown string field). They must not contain a ':' character — colons are YAML
     structural characters ('value: more' inside an unquoted scalar is
     invalid YAML) and naive frontmatter parsers misread them. Rephrase or
     use ';' instead.
@@ -1222,7 +1221,7 @@ def _validate_single_skill(skill_path, strict):
             results.append(("PASS", "description is valid"))
 
         # Unknown fields
-        known_fields = {'name', 'description', 'license', 'compatibility', 'allowed-tools', 'metadata'}
+        known_fields = {'name', 'description', 'license', 'compatibility', 'metadata'}
         unknown = set(fm.keys()) - known_fields
         if unknown:
             results.append(("WARN", f"unknown frontmatter fields: {', '.join(sorted(unknown))}"))
@@ -1553,11 +1552,11 @@ def cmd_info(args):
             tags = metadata.get('tags', [])
             if tags:
                 print(f"  metadata.tags: {', '.join(tags)}")
-        for key in ('license', 'compatibility', 'allowed-tools'):
+        for key in ('license', 'compatibility'):
             val = fm.get(key)
             if val is not None:
                 print(f"  {key}: {val}")
-        known_fields = {'name', 'description', 'license', 'compatibility', 'allowed-tools', 'metadata'}
+        known_fields = {'name', 'description', 'license', 'compatibility', 'metadata'}
         extra = set(fm.keys()) - known_fields
         for key in sorted(extra):
             print(f"  {key}: {fm[key]}")
@@ -1893,8 +1892,8 @@ def build_parser():
 
             Checks:
               - Frontmatter presence, valid YAML, no duplicate keys
-              - Text-only fields (name, description, license, compatibility,
-                allowed-tools) contain no ':' character (error)
+              - Text-only fields (name, description, license, compatibility)
+                contain no ':' character (error)
               - Name format (lowercase, hyphens, length)
               - Description presence, length, no XML/HTML tags
               - Body starts with a matching H1 heading

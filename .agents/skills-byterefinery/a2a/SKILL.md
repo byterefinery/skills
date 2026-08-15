@@ -3,7 +3,6 @@ name: a2a
 description: Agent2Agent (A2A) Protocol v1.0 — enables communication and interoperability between opaque agentic applications. Use when building A2A servers (exposing agents), A2A clients (connecting to agents), agent cards, multi-agent orchestration, or understanding how A2A complements MCP. Covers protocol data model, operations, protocol bindings (JSON-RPC, gRPC, HTTP/REST), streaming (SSE), push notifications, security, and Python SDK patterns.
 license: Apache-2.0
 compatibility: Requires Python 3.12+, uv, a2a-sdk (pip install a2a-sdk)
-allowed-tools: Bash(python) Bash(curl) Read Write
 metadata:
   tags:
     - ai

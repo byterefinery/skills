@@ -118,10 +118,9 @@ A skill is a directory containing a `SKILL.md` file. Everything else is optional
 | `description` | Yes | Non-empty, max 1024 chars, third-person, must not contain XML/HTML tags (`<tag>`) or a `:` character |
 | `license` | No | License name or reference to a bundled license file (e.g., `Apache-2.0`, `Proprietary. LICENSE.txt has complete terms`) |
 | `compatibility` | No | Max 500 chars. Environment requirements — intended product, system packages, network access. Only include if the skill has specific needs |
-| `allowed-tools` | No | Space-separated string of pre-approved tools the skill may use (experimental; support varies by agent) |
 | `metadata` | No | Optional object. May contain `tags` (array of strings, e.g., `["meta", "devops"]`). Validator warns if `metadata` is not a mapping or `tags` is not a string array.
 
-All top-level text fields (`name`, `description`, `license`, `compatibility`, `allowed-tools`, and any unknown string field) must not contain a `:` character. Colons are YAML structural characters — `Use when: X` inside an unquoted scalar is invalid YAML, and naive frontmatter parsers misread them. Rephrase or use `;` instead; the validator errors on any `:` in a text field.
+All top-level text fields (`name`, `description`, `license`, `compatibility`, and any unknown string field) must not contain a `:` character. Colons are YAML structural characters — `Use when: X` inside an unquoted scalar is invalid YAML, and naive frontmatter parsers misread them. Rephrase or use `;` instead; the validator errors on any `:` in a text field.
 
 ### Frontmatter Template
 
@@ -131,7 +130,6 @@ name: my-skill
 description: What this skill does and when to use it. Be specific.
 license: Apache-2.0
 compatibility: Requires Python 3.11+ and uv
-allowed-tools: Read Write
 metadata:
   tags:
     - dev
@@ -191,7 +189,7 @@ Common operations:
 
 Checks performed:
 - Frontmatter presence, valid YAML (errors on parse failure or non-mapping), no duplicate top-level keys
-- Text-only fields contain no `:` character (errors on any `:` in `name`, `description`, `license`, `compatibility`, `allowed-tools`, or unknown string fields)
+- Text-only fields contain no `:` character (errors on any `:` in `name`, `description`, `license`, `compatibility`, or unknown string fields)
 - Name format (case, characters, length, hyphen rules)
 - Description presence, length, and absence of XML/HTML tags
 - `metadata` structure (warns if present but not a mapping; warns if `tags` is not a string array)
@@ -275,7 +273,7 @@ Guidelines:
 - **Default script is Python, not bash** — `--with-scripts` creates `scripts/<name>.py` with PEP 723 shebang. Use `--lang bash` for the shell wrapper + `_<name>.py` convention.
 - **Scaffolded files may lose execute permission** — `skman.py create --with-scripts` sets `chmod 0o755`, but editors or git checkouts can strip it. Always verify with `ls -l <name>.py`; the validator warns if the bit is missing.
 - **`--strict` turns section warnings into errors** — only `## Overview` produces a warning when missing. `## Usage`, `## Gotchas`, and `## References` are truly optional and never warn (knowledge-only skills often have no Usage section). In strict mode, any warning fails validation.
-- **No `:` in text-only frontmatter fields** — `description: Use when: X` is invalid YAML (mapping values are not allowed in this context), and even `foo:bar` confuses naive frontmatter parsers. Keep every top-level scalar string field (`name`, `description`, `license`, `compatibility`, `allowed-tools`) free of colons; rephrase or use `;`. The validator errors on any `:` in these fields, and `create` rejects colon descriptions before scaffolding anything.
+- **No `:` in text-only frontmatter fields** — `description: Use when: X` is invalid YAML (mapping values are not allowed in this context), and even `foo:bar` confuses naive frontmatter parsers. Keep every top-level scalar string field (`name`, `description`, `license`, `compatibility`) free of colons; rephrase or use `;`. The validator errors on any `:` in these fields, and `create` rejects colon descriptions before scaffolding anything.
 - **Frontmatter `name` must match the directory basename exactly** — e.g., `demo-skill-2-4-1/` requires `name: demo-skill-2-4-1`, `skman/` requires `name: skman`. The validator warns on mismatch. Fix by renaming the directory or correcting the frontmatter.
 - **H1 heading must match `# <name>` or `# <base> <version>`** — the validator errors if the first heading doesn't match. For `skman/` it must be `# skman`; for `demo-skill-2-4-1/` it must be `# demo-skill 2.4.1` (version uses dots, not hyphens). The version in the H1 must correspond to the hyphenated version suffix in the directory/frontmatter name.
 - **`search` requires `yq` on PATH** — install via `pip install yq` (also needs `jq`). Without it, `skman.py search` exits with an error.

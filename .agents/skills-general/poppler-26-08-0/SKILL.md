@@ -3,7 +3,6 @@ name: poppler-26-08-0
 description: Extract text, metadata, images, and pages from PDF files using poppler CLI tools (pdftotext, pdfinfo, pdfimages, pdftocairo, pdfseparate). Use when the user needs to parse, inspect, or convert PDFs from the command line.
 license: GPL-2.0
 compatibility: Requires poppler-utils 26.08.0 (pdftotext, pdfinfo, pdfimages, pdftocairo, pdfseparate, pdfunite). Install via `apt install poppler-utils`, `brew install poppler`, or your distro's package manager.
-allowed-tools: Bash(cat) Bash(grep) Bash(pdftotext) Bash(pdfinfo) Bash(pdfimages) Bash(pdftocairo) Bash(pdfseparate) Bash(pdfunite) Bash(pdftohtml) Read
 metadata:
   tags:
     - pdf

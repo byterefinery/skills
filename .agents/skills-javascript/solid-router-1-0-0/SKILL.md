@@ -3,7 +3,6 @@ name: solid-router-1-0-0
 description: Solid Router 1.0.0 — the official router for Solid.js. Covers Router/Route/A/Navigate components, dynamic routes with params and wildcards, nested routes via props.children, preload functions, data APIs (query, createAsync, createAsyncStore, action), response helpers (redirect, reload, json), router primitives (useParams, useNavigate, useLocation, useSearchParams, useIsRouting, useMatch, useBeforeLeave), HashRouter/MemoryRouter/StaticRouter, config-based routing, and SSR. Use when building Solid.js apps with client-side routing, SPA navigation, data fetching with preload, or server-side rendering.
 license: MIT
 compatibility: "Requires Solid.js 1.9+ and Node.js 18+. Browser support — ES2017+. JSX transform via babel-preset-solid or @babel/plugin-transform-react-jsx."
-allowed-tools: Bash(npm) Bash(npx) Bash(pnpm) Bash(yarn) Bash(bun) Read
 metadata:
   tags:
     - javascript
