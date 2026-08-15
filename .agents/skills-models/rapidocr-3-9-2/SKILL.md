@@ -7,7 +7,7 @@ description: >
   classification, and recognition from images, URLs, bytes, or numpy arrays. Supports
   CPU, CUDA, NPU, MPS, DML, and CANN devices.
 license: Apache-2.0
-compatibility: Requires Python 3.8+. Core deps: rapidocr, onnxruntime, opencv-python, numpy. GPU engines need tensorrt, openvino, paddlepaddle, torch, or MNN installed separately.
+compatibility: Requires Python 3.8+. Core deps include rapidocr, onnxruntime, opencv-python, and numpy. GPU engines need tensorrt, openvino, paddlepaddle, torch, or MNN installed separately.
 metadata:
   tags:
     - ocr

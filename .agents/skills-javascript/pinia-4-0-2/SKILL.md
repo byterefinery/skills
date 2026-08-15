@@ -2,7 +2,7 @@
 name: pinia-4-0-2
 description: Pinia 4.0.2 — the official Vue.js state management library. Covers store definition (Options and Setup APIs), reactive state with $patch/$subscribe/$reset, getters, actions, plugins, SSR hydration, storeToRefs, map helpers for Options API components, HMR, and build-less browser usage via CDN (IIFE and ESM builds). Use when working with Pinia stores, state management in Vue 3 apps, migrating from Vuex, or debugging reactive store issues.
 license: MIT
-compatibility: Requires Vue 3.5.11+ and @vue/devtools-api 8.1.5+. TypeScript 5.6.0+ optional. Browser: ES module support + import maps (Safari 16.4+).
+compatibility: Requires Vue 3.5.11+ and @vue/devtools-api 8.1.5+. TypeScript 5.6.0+ optional. Browser support — ES modules + import maps (Safari 16.4+).
 metadata:
   tags:
     - javascript

@@ -7,7 +7,7 @@ description: >
   integrate ML frameworks via ModelHubMixin/PyTorchModelHubMixin, handle model
   cards, run Jobs and Inference Endpoints, use HfFileSystem (fsspec), manage
   Spaces, Buckets, webhooks, collections, papers, and discussions. Use this skill
-  whenever the user interacts with the Hugging Face Hub programmatically: downloading
+  whenever the user interacts with the Hugging Face Hub programmatically — downloading
   models, pushing checkpoints, calling inference APIs, managing repos, working with
   model cards, or any Hub-related Python task, even if they don't name
   "huggingface_hub" explicitly.

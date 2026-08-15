@@ -8,7 +8,7 @@ description: >
   model family (4m to 2.5B parameters), the Toto2Model API, forecast(),
   decode strategies (single-pass and block decode), GluonTS integration via
   Toto2GluonTSModel, BOOM and GIFT-Eval benchmarks, and missing-value handling.
-  Default model: Datadog/Toto-2.0-22m. Trigger on: toto, toto-2, time-series
+  Default model is Datadog/Toto-2.0-22m. Triggers on toto, toto-2, time-series
   forecasting, observability metrics, zero-shot forecasting, quantile
   forecasting, multivariate time series, BOOM benchmark, GluonTS integration.
 metadata:

@@ -9,14 +9,14 @@ description: >
   model loading via from_pretrained, text generation with GenerationConfig,
   training with Trainer/TrainingArguments, tokenization, image processing,
   feature extraction, and integration with PEFT, DeepSpeed, FSDP, vLLM, and
-  other frameworks. Trigger on: transformers, pipeline, AutoModel, AutoTokenizer,
+  other frameworks. Triggers on transformers, pipeline, AutoModel, AutoTokenizer,
   from_pretrained, generate, Trainer, tokenization, Hugging Face, pretrained
   model, fine-tuning, text-generation, image-classification, speech-recognition,
   quantization, ONNX export.
 license: Apache-2.0
 compatibility: >
   Python 3.10–3.14, PyTorch 2.4+. Requires huggingface-hub>=1.5.0,<2.0,
-  numpy, Pillow, jinja2, accelerate>=1.1.0. Optional: torch, torchvision,
+  numpy, Pillow, jinja2, accelerate>=1.1.0. Optional extras include torch, torchvision,
   torchaudio, datasets, peft, deepspeed, trl, optimum.
 metadata:
   tags:

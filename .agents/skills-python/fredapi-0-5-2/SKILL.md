@@ -6,7 +6,7 @@ description: >
   unemployment, interest rates, etc.), searching FRED series by keyword, browsing
   series by release or category, or working with data revisions via ALFRED
   (point-in-time / vintage data). Returns pandas Series/DataFrame. Requires a free
-  FRED API key. Trigger on: FRED, Federal Reserve Economic Data, St. Louis Fed,
+  FRED API key. Triggers on FRED, Federal Reserve Economic Data, St. Louis Fed,
   fredapi, macroeconomic data, US economic indicators, vintage data, data revisions.
 metadata:
   tags:

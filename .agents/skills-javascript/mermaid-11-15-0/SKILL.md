@@ -3,7 +3,7 @@ name: mermaid-11-15-0
 description: >
   Mermaid diagram syntax reference and validation. Use when writing, debugging,
   or converting Mermaid diagrams. Every diagram must pass mermaid.sh validate
-  before output. Supports: flowchart, sequenceDiagram, stateDiagram, classDiagram,
+  before output. Supports flowchart, sequenceDiagram, stateDiagram, classDiagram,
   gantt, erDiagram, pie, gitgraph, journey, mindmap, timeline, xychart, radar-beta,
   quadrantChart, sankey, block, architecture-beta, c4, packet, treemap-beta, venn-beta,
   wardley-beta, ishikawa-beta, kanban, requirementDiagram.

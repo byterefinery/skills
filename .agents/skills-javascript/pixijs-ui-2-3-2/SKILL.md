@@ -1,7 +1,7 @@
 ---
 name: pixijs-ui-2-3-2
 description: >
-  PixiUI v2.3.2 — UI component library for PixiJS v8. Use when building interactive UI with PixiJS:
+  PixiUI v2.3.2 — UI component library for PixiJS v8. Use when building interactive UI with PixiJS —
   buttons (Button, FancyButton), checkboxes, radio groups, sliders (single/double), progress bars
   (linear/circular), text input, dropdown selects, scrollable containers (ScrollBox), modal dialogs,
   masked frames, switchers, and list layouts. Covers component instantiation, event signals (typed-signals),

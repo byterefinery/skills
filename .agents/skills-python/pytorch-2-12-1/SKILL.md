@@ -6,7 +6,7 @@ description: >
   TorchScript, torch.compile, distributed training (DDP, FSDP), DataLoader,
   or any ML/DL task using PyTorch. Covers torch, torch.nn, torch.optim,
   torch.utils.data, torch.jit, torch.distributed, torch.cuda, and the full
-  2.12 API. Trigger on: pytorch, torch, tensor, nn.Module, DataLoader,
+  2.12 API. Triggers on pytorch, torch, tensor, nn.Module, DataLoader,
   autograd, GPU, CUDA, torch.compile, TorchScript, DDP, FSDP, distributed,
   optimizer, loss, tensor operations, linear algebra, FFT, sparse tensors.
 metadata:

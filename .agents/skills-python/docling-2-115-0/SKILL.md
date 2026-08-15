@@ -10,7 +10,7 @@ description: >
   LlamaIndex, CrewAI, Haystack, or MCP. Covers DocumentConverter API, pipeline
   options (PDF, VLM, ASR), enrichment models, GPU acceleration, offline mode,
   CLI (docling, docling-tools), API server (docling-serve), and distributed
-  processing via Jobkit. Trigger on: docling, document conversion, PDF parsing,
+  processing via Jobkit. Triggers on docling, document conversion, PDF parsing,
   table extraction, OCR, DoclingDocument, document-to-markdown, DocTags,
   document chunking, RAG pipeline, Whisper transcription, vision language model,
   VLM pipeline, ASR pipeline, picture classification, formula extraction.

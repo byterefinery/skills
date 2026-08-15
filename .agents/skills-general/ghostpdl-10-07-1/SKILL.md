@@ -2,7 +2,7 @@
 name: ghostpdl-10-07-1
 description: GhostPDL 10.07.1 — the unified Artifex document processing suite. Covers Ghostscript (PostScript Level 3 / PDF 1.0-2.0), GhostPDF (C-based PDF interpreter), GhostPCL (PCL5/PXL), GhostXPS (XPS), and GhostPDL (auto-detecting multi-language framework). Use for PDF conversion/optimization, PostScript rendering, format conversion (PS/PDF/PCL/XPS/images), rasterization, N-up imposition, OCR, color management, font handling, embedding via gsapi C/Python/Java/C# bindings, CUPS printing, and building from source.
 license: AGPL-3.0 / Commercial
-compatibility: Requires C compiler (GCC/Clang/MSVC), GNU make (Unix) or nmake (Windows). Runtime: Linux, macOS, Windows, BSD. Optional: Tesseract + Leptonica for OCR, CUPS for printing, Fontconfig for system fonts
+compatibility: Requires C compiler (GCC/Clang/MSVC), GNU make (Unix) or nmake (Windows). Runtime is Linux, macOS, Windows, and BSD. Optional extras include Tesseract + Leptonica for OCR, CUPS for printing, and Fontconfig for system fonts
 metadata:
   tags:
     - document-processing

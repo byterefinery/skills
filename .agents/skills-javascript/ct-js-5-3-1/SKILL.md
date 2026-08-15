@@ -1,7 +1,7 @@
 ---
 name: ct-js-5-3-1
 description: >
-  Ct.js v5.3.1 — 2D game engine built on Pixi.js for browser games. Use when building or working with ct.js games:
+  Ct.js v5.3.1 — 2D game engine built on Pixi.js for browser games. Use when building or working with ct.js games —
   templates, copies, rooms, actions/inputs, camera, sounds, emitters, tilemaps, backgrounds, behaviors,
   content subsystem, styles, timers, or the ct.place collision module. Covers the full ct.js API including
   creating and managing copies, room transitions, input actions, camera following and effects,

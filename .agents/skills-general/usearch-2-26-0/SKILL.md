@@ -13,7 +13,7 @@ compatibility: >
   Linux, macOS, Windows, iOS, Android, WebAssembly. C++11 or newer for header-only usage.
   Python 3.8+ for pip install. CMake for C/C++ builds. Cargo for Rust.
   NumKong SIMD kernels require x86 (AVX2/AVX-512) or ARM (NEON/SVE) hardware.
-allowed-tools: Bash(pip:*,cargo:*,npm:*,dotnet:*,git:*) Read
+allowed-tools: Bash(pip,cargo,npm,dotnet,git) Read
 metadata:
   tags:
     - vector-search

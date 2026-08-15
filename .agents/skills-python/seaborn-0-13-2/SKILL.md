@@ -2,13 +2,13 @@
 name: seaborn-0-13-2
 description: >
   Seaborn 0.13.2 — statistical data visualization library built on matplotlib.
-  Use when the user needs attractive statistical plots in Python: relational plots
+  Use when the user needs attractive statistical plots in Python — relational plots
   (scatter, line), distribution plots (histogram, KDE, ECDF, rug), categorical plots
   (strip, swarm, box, violin, bar, point, count, boxen), regression plots (regplot,
   lmplot, residplot), matrix plots (heatmap, clustermap), multi-plot grids
   (FacetGrid, PairGrid, PairPlot, JointGrid, JointPlot), or the new declarative
   seaborn.objects API (so.Plot). Covers themes, palettes, color mapping, and
-  the full figure-level / axes-level API. Trigger on: seaborn, sns., statistical
+  the full figure-level / axes-level API. Triggers on seaborn, sns., statistical
   plots, data visualization, heatmap, boxplot, violinplot, pairplot, jointplot,
   relplot, catplot, displot, lmplot, or any mention of seaborn.
 metadata:

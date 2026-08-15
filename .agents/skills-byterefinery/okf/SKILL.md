@@ -1,7 +1,7 @@
 ---
 name: okf
 description: Creates, validates, and manages Open Knowledge Format (OKF v0.2) bundles — directory trees of markdown concept documents with YAML frontmatter. Use with the `markdown` and `webfetch` skills to preprocess PDF, Office, and web sources into markdown; then OKF extracts concepts, writes linked documents with provenance/trust/freshness/lifecycle frontmatter, and enables querying by any frontmatter field. Uses okf.py for creating, validating, visiting, and searching OKF bundles.
-allowed-tools: Bash(okf.py:*)
+allowed-tools: Bash(okf.py)
 metadata:
   tags:
     - meta

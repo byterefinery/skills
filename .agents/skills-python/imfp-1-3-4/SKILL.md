@@ -7,7 +7,7 @@ description: >
   trade, IFS, WEO/World Economic Outlook data, etc.), browsing IMF databases, or
   working with IMF parameter codes. Returns pandas DataFrames. No API key required,
   but rate limits apply — set a custom app name to avoid shared throttling.
-  Trigger on: IMF, International Monetary Fund, imfp, IMF data, IMF API, SDMX,
+  Triggers on IMF, International Monetary Fund, imfp, IMF data, IMF API, SDMX,
   exchange rates IMF, commodity prices IMF, IFS data, WEO data.
 metadata:
   tags:

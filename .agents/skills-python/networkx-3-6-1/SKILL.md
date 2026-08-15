@@ -5,7 +5,7 @@ description: >
   Use this skill whenever the user works with graphs, networks, nodes, edges, shortest paths, centrality,
   community detection, spanning trees, flow networks, DAGs, topological sort, graph generators,
   adjacency matrices, Laplacian spectra, isomorphism, bipartite matching, or any network science task.
-  Triggers on: graph algorithms, network analysis, node/edge operations, Dijkstra, BFS, DFS, PageRank,
+  Triggers on graph algorithms, network analysis, node/edge operations, Dijkstra, BFS, DFS, PageRank,
   Louvain communities, connected components, minimum spanning tree, max flow, transitive closure,
   and anything involving NetworkX or the `nx` module.
 ---

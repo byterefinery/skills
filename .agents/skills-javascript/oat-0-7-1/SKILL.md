@@ -1,6 +1,6 @@
 ---
 name: oat-0-7-1
-description: Oat UI v0.7.1 — ultra-lightweight (~10KB), zero-dependency, semantic HTML/CSS/JS component library. Use when building web UIs with native HTML elements styled contextually without class pollution. Covers 30+ components: buttons, forms, dialogs, dropdowns, tabs, toasts, sidebar layouts, grids, tables, badges, avatars, tooltips, file uploads, tag inputs, and more. Supports automatic dark mode via light-dark(). No framework or build step required.
+description: Oat UI v0.7.1 — ultra-lightweight (~10KB), zero-dependency, semantic HTML/CSS/JS component library. Use when building web UIs with native HTML elements styled contextually without class pollution. Covers 30+ components — buttons, forms, dialogs, dropdowns, tabs, toasts, sidebar layouts, grids, tables, badges, avatars, tooltips, file uploads, tag inputs, and more. Supports automatic dark mode via light-dark(). No framework or build step required.
 license: MIT
 compatibility: Modern browsers with CSS @layer, light-dark(), popover API, and Web Components support (Chrome 114+, Firefox 122+, Safari 17.2+)
 metadata:

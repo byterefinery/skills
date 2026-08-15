@@ -4,7 +4,7 @@ description: >
   aiohttp-session 2.12.1 — session management middleware for aiohttp.web. Use this skill whenever
   the user works with aiohttp web sessions, needs to store per-user data across requests, implements
   login/logout flows, flash messages, or session-based authentication in aiohttp. Supports multiple
-  storage backends: encrypted cookies (Fernet/NaCl), Redis, Memcached, and plain cookies (testing
+  storage backends — encrypted cookies (Fernet/NaCl), Redis, Memcached, and plain cookies (testing
   only). Provides dict-like Session objects via get_session/new_session, with middleware-based
   automatic load/save. Use when the user mentions aiohttp sessions, session cookies, session fixation,
   or server-side session storage with aiohttp.

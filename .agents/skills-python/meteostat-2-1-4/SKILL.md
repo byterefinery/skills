@@ -8,7 +8,7 @@ description: >
   Backed by NOAA, DWD, ECCC, GSA, Met.no and Meteostat's own derived datasets.
   Use when the user needs historical weather data, climate normals, weather
   station lookups, spatial interpolation of meteorological data, or any
-  weather/climate analysis in Python. Triggers on: weather data, climate data,
+  weather/climate analysis in Python. Triggers on weather data, climate data,
   weather stations, temperature/precipitation/wind data, meteostat,
   interpolation, normals, climate analysis.
 metadata:

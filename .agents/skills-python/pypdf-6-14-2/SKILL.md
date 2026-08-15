@@ -9,7 +9,7 @@ description: >
   PageObject (page manipulation), Transformation (affine transforms), PageRange
   (page slicing), PaperSize (standard dimensions), and annotation types
   (Highlight, FreeText, Rectangle, Ellipse, Polygon, PolyLine, Line, Text, Link).
-  Optional Pillow dependency for image extraction. Trigger on: pypdf, PdfReader,
+  Optional Pillow dependency for image extraction. Triggers on pypdf, PdfReader,
   PdfWriter, PDF text extraction, PDF merge, PDF split, PDF encryption,
   PDF annotations, PDF form fields, PDF outlines, PDF images extraction,
   PDF page transformation, PDF metadata.

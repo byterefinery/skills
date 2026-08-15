@@ -3,7 +3,7 @@ name: pyodide-314-0-2
 description: >
   Pyodide 314.0.2 — Python in the browser via WebAssembly (WASM/Emscripten).
   Use when running Python code in a browser, Node.js, Deno, or Bun environment.
-  Covers: loadPyodide, runPython/runPythonAsync, package management (micropip,
+  Covers loadPyodide, runPython/runPythonAsync, package management (micropip,
   loadPackage), file system (MEMFS, IDBFS, NODEFS, NativeFS), type conversions
   between JS and Python (JsProxy, PyProxy, toJs, toPy), HTTP (pyfetch, pyxhr),
   console (Console, PyodideConsole), webloop (WebLoop, PyodideFuture),

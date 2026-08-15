@@ -9,7 +9,7 @@ description: >
   Also covers cut generators, heuristics, custom branching, event handlers,
   callbacks, SOS constraints, solution pools, parallel solving, AMPL interface,
   and integration with modeling languages (PuLP, cvxpy, Pyomo, JuMP, MiniZinc).
-  Trigger on: MILP, MIP solver, branch-and-cut, integer programming, Cbc solver,
+  Triggers on MILP, MIP solver, branch-and-cut, integer programming, Cbc solver,
   COIN-OR optimization, mixed-integer optimization.
 metadata:
   tags:

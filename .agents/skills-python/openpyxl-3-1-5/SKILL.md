@@ -2,13 +2,13 @@
 name: openpyxl-3-1-5
 description: >
   openpyxl 3.1.5 — read/write Microsoft Excel .xlsx, .xlsm, .xltx, .xltm files in Python.
-  Use when creating, modifying, or reading Excel workbooks programmatically: writing data
+  Use when creating, modifying, or reading Excel workbooks programmatically — writing data
   to cells, applying styles (fonts, fills, borders, alignment), conditional formatting,
   charts (area, bar, line, pie, scatter, bubble, radar, surface, stock, doughnut),
   data validation, tables, images, page setup, freeze panes, auto-filters, pivot tables,
   row/column grouping, merge/unmerge cells, comments, hyperlinks, headers/footers,
   or any Excel file manipulation in Python. Does NOT support legacy .xls or binary .xlsb.
-  Trigger on: openpyxl, Workbook, load_workbook, .xlsx, Excel file creation, Excel styling,
+  Triggers on openpyxl, Workbook, load_workbook, .xlsx, Excel file creation, Excel styling,
   Excel charts, conditional formatting, data validation, freeze panes.
 metadata:
   tags:

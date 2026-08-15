@@ -3,7 +3,7 @@ name: schedula-1-6-15
 description: >
   Schedula 1.6.15 — dynamic flow-based programming library for Python. Use when
   building dataflow pipelines where computation order is determined at runtime
-  from a DAG of interdependent functions. Trigger on: Dispatcher, dataflow
+  from a DAG of interdependent functions. Triggers on Dispatcher, dataflow
   scheduling, flow-based programming, ArciDispatch, sub-dispatcher, DAG-based
   computation, automatic control flow, parallel dispatch, or when the user needs
   to model systems of interdependent formulas/functions where inputs/outputs are

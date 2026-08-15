@@ -3,9 +3,9 @@ name: yq-4-1-2
 description: >
   yq 4.1.2 — command-line YAML/XML/TOML processor that wraps jq. Use when querying,
   filtering, transforming, or editing YAML, XML, or TOML files from the shell or scripts.
-  Provides three executables: `yq` (YAML), `xq` (XML), `tomlq` (TOML). Supports YAML
+  Provides three executables — `yq` (YAML), `xq` (XML), `tomlq` (TOML). Supports YAML
   roundtrip with tag/style preservation (`-Y`), in-place editing (`-i`), JSON conversion,
-  and all jq filters. Trigger on: YAML processing, XML parsing CLI, TOML editing, yq,
+  and all jq filters. Triggers on YAML processing, XML parsing CLI, TOML editing, yq,
   xq, tomlq, jq wrapper, YAML to JSON, editing YAML in-place, CloudFormation templates,
   Kubernetes config edits, or any shell-based structured data manipulation.
 license: Apache-2.0

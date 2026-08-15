@@ -1,7 +1,7 @@
 ---
 name: markdown
 description: Converts documents to and from Markdown. Accepts local files or URLs (http/https). Use when the user needs to convert PDF, Word (docx), PowerPoint (pptx), OpenDocument (odt), or Excel (xlsx) files to Markdown, or convert Markdown to PDF or standalone single-file HTML. Handles formula evaluation in Excel before conversion.
-allowed-tools: Bash(pandoc:*) Bash(uvx:*) Bash(pdftotext:*) Bash(pdfinfo:*) Bash(gs:*)
+allowed-tools: Bash(pandoc) Bash(uvx) Bash(pdftotext) Bash(pdfinfo) Bash(gs)
 metadata:
   tags:
     - meta

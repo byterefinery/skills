@@ -1,6 +1,6 @@
 ---
 name: pi-0-84-2
-description: Pi coding agent CLI (v0.84.2) — minimal, extensible terminal coding agent. Use when running the `pi` CLI: interactive TUI sessions, one-shot `pi -p` prompts, JSON/RPC modes, continuing or forking sessions, choosing models/providers/thinking levels, tool allowlists, installing pi packages, or configuring settings, context files, and environment variables. Covers install, authentication, and the full CLI flag reference.
+description: Pi coding agent CLI (v0.84.2) — minimal, extensible terminal coding agent. Use when running the `pi` CLI — interactive TUI sessions, one-shot `pi -p` prompts, JSON/RPC modes, continuing or forking sessions, choosing models/providers/thinking levels, tool allowlists, installing pi packages, or configuring settings, context files, and environment variables. Covers install, authentication, and the full CLI flag reference.
 license: MIT
 compatibility: Requires pi 0.84.2+ installed globally (Node.js >= 22.19 or Bun); a provider API key or subscription login
 metadata:

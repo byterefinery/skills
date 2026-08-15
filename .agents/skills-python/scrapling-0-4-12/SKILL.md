@@ -2,10 +2,10 @@
 name: scrapling-0-4-12
 description: >
   Scrapling v0.4.12 — adaptive web scraping library with Python API and CLI.
-  Fetchers: `Fetcher` (HTTP with TLS impersonation), `DynamicFetcher` (browser
+  Fetchers are `Fetcher` (HTTP with TLS impersonation), `DynamicFetcher` (browser
   automation), `StealthyFetcher` (anti-bot bypass including Cloudflare). Sessions
   for persistent state. `Selector` parser with CSS/XPath/BS4 selection and adaptive
-  element tracking. CLI: `scrapling extract` (save pages as .md/.html/.txt),
+  element tracking. CLI — `scrapling extract` (save pages as .md/.html/.txt),
   `scrapling shell` (interactive IPython REPL with curl conversion). Use when the
   user needs to scrape websites from Python or the terminal, bypass anti-bot
   protections, extract content as Markdown or text, run browser automation,

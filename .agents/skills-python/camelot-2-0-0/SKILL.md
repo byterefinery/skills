@@ -8,13 +8,13 @@ description: >
   (flavor='ml' via Table Transformer), and auto-detection per page. Covers CLI
   (`camelot` / `camelot-py` commands), visual debugging via matplotlib, per-page
   parameter overrides, in-memory bytes input, encrypted PDFs, and multi-page
-  table stitching. Trigger on: PDF table extraction, camelot-py, read_pdf,
+  table stitching. Triggers on PDF table extraction, camelot-py, read_pdf,
   lattice parser, stream parser, table-to-DataFrame from PDF, PDF-to-CSV table.
 license: MIT
 compatibility: >
   Python 3.10+. Requires opencv-python-headless, pypdfium2, playa-pdf, pandas,
   numpy, pillow. Avoid installing opencv-python alongside opencv-python-headless
-  (they shadow each other). Optional: matplotlib (plot), torch+transformers (ml),
+  (they shadow each other). Optional extras include matplotlib (plot), torch+transformers (ml),
   rapidocr-onnxruntime (ocr), ghostscript (ghostscript backend).
 metadata:
   tags:

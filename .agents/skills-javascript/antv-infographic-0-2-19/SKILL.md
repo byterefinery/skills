@@ -5,7 +5,7 @@ description: >
   professional data visualizations — lists, sequences, hierarchies, comparisons, charts,
   relation graphs — as self-contained HTML or raw SVG. Supports a concise YAML-like syntax,
   streaming AI rendering, built-in editor, JSX custom components, SSR, and theme/stylize system.
-  File extensions: none (library is imported). Trigger on: infographic, data visualization,
+  No file extensions (library is imported). Triggers on infographic, data visualization,
   SVG chart, flowchart, timeline, mindmap, SWOT, funnel, pie chart, bar chart.
 metadata:
   tags:

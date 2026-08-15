@@ -10,7 +10,7 @@ description: >
   Covers sync/async convert endpoints, source/target kinds, VLM presets, picture
   description, code/formula extraction, table structure, OCR, chunking, Gradio UI,
   OpenTelemetry, container images (CPU, CUDA, ROCm), and K8s deployments. Trigger
-  on: docling-serve, document conversion API, docling REST service, async document
+  on docling-serve, document conversion API, docling REST service, async document
   processing, docling MCP, batch conversion, docling container, docling deployment,
   docling RQ worker, docling Ray engine.
 license: MIT
@@ -18,7 +18,7 @@ compatibility: >
   Python 3.10–3.13. Requires `docling-serve` Python package or container image.
   GPU variants need NVIDIA drivers >=550.54.14 with nvidia-container-toolkit,
   or AMD ROCm >=6.3. RQ engine requires Redis. Ray engine requires a Ray cluster.
-  Container images: 4.4–11.4 GB depending on variant.
+  Container images range from 4.4–11.4 GB depending on variant.
 metadata:
   tags:
     - document-processing

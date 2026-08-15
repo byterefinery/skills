@@ -2,7 +2,7 @@
 name: pixijs-assetpack-1-7-0
 description: >
   AssetPack v1.7.0 — configurable asset pipeline for the web, designed for PixiJS but framework-agnostic.
-  Use when optimizing, transforming, or bundling web assets: image compression (PNG, JPG, WebP, AVIF, BC7, ASTC, Basis, ETC),
+  Use when optimizing, transforming, or bundling web assets — image compression (PNG, JPG, WebP, AVIF, BC7, ASTC, Basis, ETC),
   mipmap generation, texture atlas/spritesheet packing, cache-busting filename hashing, JSON minification,
   audio conversion (FFmpeg), font conversion (WOFF2, SDF, MSDF), Spine atlas processing, and PixiJS manifest generation.
   Covers programmatic API, CLI, config file (.assetpack.js), pipe plugin system, tags in filenames,

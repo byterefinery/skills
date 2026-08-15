@@ -1,6 +1,6 @@
 ---
 name: numpy-2-4-6
-description: "NumPy 2.4.6: array creation, manipulation, broadcasting, ufuncs, linear algebra, statistics, random sampling, structured arrays, and I/O. Use whenever working with numerical arrays, matrices, scientific computing, data analysis, or any task involving NumPy operations. Covers ndarrays, dtype system, einsum, stride tricks, masked arrays, FFT, polynomials, and the full NumPy 2.x API."
+description: "NumPy 2.4.6 — array creation, manipulation, broadcasting, ufuncs, linear algebra, statistics, random sampling, structured arrays, and I/O. Use whenever working with numerical arrays, matrices, scientific computing, data analysis, or any task involving NumPy operations. Covers ndarrays, dtype system, einsum, stride tricks, masked arrays, FFT, polynomials, and the full NumPy 2.x API."
 metadata:
   tags:
     - numerical

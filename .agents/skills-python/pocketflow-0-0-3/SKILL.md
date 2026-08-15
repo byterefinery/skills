@@ -8,7 +8,7 @@ description: >
   orchestration without framework bloat.
 license: MIT
 compatibility: Requires Python 3.11+. Install via `pip install pocketflow` or copy the single __init__.py (100 lines). No other dependencies needed.
-allowed-tools: Bash(pip:*) Bash(python:*) Read Write Edit
+allowed-tools: Bash(pip) Bash(python) Read Write Edit
 metadata:
   tags:
     - llm

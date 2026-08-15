@@ -333,25 +333,42 @@ def _chars_to_tokens(text, in_code=False):
 # ---------------------------------------------------------------------------
 
 def _parse_frontmatter(text):
-    """Return (frontmatter_dict, body_text) or (None, text) if no frontmatter.
+    """Return (frontmatter_dict, body_text, yaml_error).
 
     Uses PyYAML (yaml.safe_load) for robust parsing of all YAML constructs:
     scalars, block literals, folded strings, nested mappings, lists, etc.
+
+    Return values:
+      (fm, body, None)   — frontmatter parsed OK (dict; {} if block is empty)
+      (None, text, None) — no frontmatter block found
+      (None, body, err)  — frontmatter block exists but is not a valid YAML
+                           mapping (PyYAML available); err is a one-line
+                           explanation of the parse failure
+
+    Invalid YAML is reported as an error instead of silently falling back to
+    the regex parser — falling back would mask genuinely broken frontmatter.
+    The regex parser is only used when PyYAML is unavailable.
     """
     m = FRONTMATTER_RE.match(text)
     if not m:
-        return None, text
+        return None, text, None
     body = text[m.end():]
     raw = m.group('content')
     if yaml is not None:
         try:
             fm = yaml.safe_load(raw)
-            if fm is None:
-                fm = {}
-            return fm, body
-        except yaml.YAMLError:
-            pass  # fall through to legacy parser
-    # Legacy regex-based parser — fallback if PyYAML is missing or fails
+        except yaml.YAMLError as e:
+            err = ' '.join(str(e).split())
+            return None, body, f"YAML parse error: {err}"
+        if fm is None:
+            fm = {}
+        if not isinstance(fm, dict):
+            return None, body, (
+                f"frontmatter must be a YAML mapping "
+                f"(got {type(fm).__name__})"
+            )
+        return fm, body, None
+    # Legacy regex-based parser — only used when PyYAML is unavailable
     fm = {}
     lines = raw.splitlines()
     i = 0
@@ -454,7 +471,7 @@ def _parse_frontmatter(text):
             else:
                 break
         fm[key] = value
-    return fm, body
+    return fm, body, None
 
 
 def _build_frontmatter_yaml(data):
@@ -499,6 +516,9 @@ def _validate_name(name):
     if not name:
         errors.append("name is missing")
         return errors
+    if not isinstance(name, str):
+        errors.append(f"name must be a string (got {type(name).__name__})")
+        return errors
 
     # Normalize Unicode for consistent comparison
     name = unicodedata.normalize("NFKC", name.strip())
@@ -529,6 +549,9 @@ def _validate_description(desc):
     errors = []
     if desc is None:
         errors.append("description is missing (required)")
+        return errors
+    if not isinstance(desc, str):
+        errors.append(f"description must be a string (got {type(desc).__name__})")
         return errors
     if not desc.strip():
         errors.append("description is empty (required)")
@@ -579,6 +602,54 @@ def _validate_compatibility(compat):
     if len(compat) > MAX_COMPATIBILITY_LEN:
         errors.append(
             f"compatibility exceeds {MAX_COMPATIBILITY_LEN} characters ({len(compat)})"
+        )
+    return errors
+
+
+def _validate_text_fields(fm):
+    """Return list of error strings for text-only frontmatter fields.
+
+    Text-only fields are the top-level scalar string values (name,
+    description, license, compatibility, allowed-tools, and any unknown
+    string field). They must not contain a ':' character — colons are YAML
+    structural characters ('value: more' inside an unquoted scalar is
+    invalid YAML) and naive frontmatter parsers misread them. Rephrase or
+    use ';' instead.
+    """
+    errors = []
+    if not isinstance(fm, dict):
+        return errors
+    for key, value in fm.items():
+        if isinstance(value, str) and ':' in value:
+            snippet = value if len(value) <= 60 else value[:57] + '...'
+            errors.append(
+                f"{key} must not contain ':' (value: '{snippet}'); "
+                f"rephrase or use ';' instead"
+            )
+    return errors
+
+
+def _check_duplicate_frontmatter_keys(raw):
+    """Return list of error strings for duplicate top-level YAML keys.
+
+    PyYAML silently accepts duplicate keys (last value wins); flag them
+    since a duplicate almost always indicates a mistake. Only column-0
+    keys are matched, so nested/indented keys never count.
+    """
+    errors = []
+    if not raw:
+        return errors
+    counts = {}
+    for line in raw.splitlines():
+        m = re.match(r'^([A-Za-z0-9_-]+)\s*:', line)
+        if m:
+            key = m.group(1)
+            counts[key] = counts.get(key, 0) + 1
+    dups = sorted(k for k, n in counts.items() if n > 1)
+    if dups:
+        errors.append(
+            f"duplicate frontmatter key(s): {', '.join(dups)} "
+            f"(each key may appear at most once)"
         )
     return errors
 
@@ -692,8 +763,11 @@ def _check_references_section(body):
     content_lines = [l for l in section_lines if l and not l.startswith('|')]
     table_lines = [l for l in section_lines if l.startswith('|')]
 
-    # Check if there's a bulleted list with reference links
-    bullet_ref_pattern = re.compile(r'^-\s+\[.+\]\(.*references/.*\)')
+    # Check if there's a bulleted list with reference links — links to local
+    # reference files (references/*.md) or external URLs are both valid
+    bullet_ref_pattern = re.compile(
+        r'^-\s+\[.+\]\((?:references/[^)]+|https?://[^)]+)\)'
+    )
     has_bullet_refs = any(bullet_ref_pattern.match(l) for l in content_lines)
 
     # Check if table format is used instead
@@ -709,7 +783,8 @@ def _check_references_section(body):
     else:
         warnings.append(
             "## References section does not contain a bulleted list of reference links; "
-            "expected lines like '- [01-topic](references/01-topic.md) — description'"
+            "expected lines like '- [01-topic](references/01-topic.md) — description' "
+            "or '- [Title](https://example.com) — description'"
         )
 
     return errors, warnings
@@ -921,6 +996,8 @@ def cmd_create(args):
     errors = []
     errors.extend(_validate_name(name))
     errors.extend(_validate_description(description))
+    # Keep frontmatter colon-free — colons in text values break YAML parsing
+    errors.extend(_validate_text_fields({'description': description}))
 
     if errors:
         print("create: validation failed:", file=sys.stderr)
@@ -1112,7 +1189,7 @@ def _validate_single_skill(skill_path, strict):
     with open(skill_md, 'r') as f:
         content = f.read()
 
-    fm, body = _parse_frontmatter(content)
+    fm, body, yaml_error = _parse_frontmatter(content)
 
     results = []
 
@@ -1120,11 +1197,13 @@ def _validate_single_skill(skill_path, strict):
     dir_basename = os.path.basename(skill_dir)
     dir_name, dir_version = _strip_version_suffix(dir_basename)
 
-    # --- Frontmatter presence ---
-    if fm is None:
+    # --- Frontmatter presence / validity ---
+    if fm is None and yaml_error is None:
         results.append(("ERROR", "no YAML frontmatter found (must start with ---)"))
+    elif fm is None:
+        results.append(("ERROR", f"frontmatter is not valid YAML — {yaml_error}"))
     else:
-        results.append(("PASS", "frontmatter present"))
+        results.append(("PASS", "frontmatter is valid YAML"))
 
         # Name
         name_errors = _validate_name(fm.get('name', ''))
@@ -1149,6 +1228,25 @@ def _validate_single_skill(skill_path, strict):
             results.append(("WARN", f"unknown frontmatter fields: {', '.join(sorted(unknown))}"))
         else:
             results.append(("PASS", "no unknown frontmatter fields"))
+
+        # Text-only fields must not contain ':'
+        text_errors = _validate_text_fields(fm)
+        if text_errors:
+            for e in text_errors:
+                results.append(("ERROR", e))
+        else:
+            results.append(("PASS", "text-only fields contain no ':' characters"))
+
+        # Duplicate top-level keys
+        fm_match = FRONTMATTER_RE.match(content)
+        dup_errors = _check_duplicate_frontmatter_keys(
+            fm_match.group('content') if fm_match else ''
+        )
+        if dup_errors:
+            for e in dup_errors:
+                results.append(("ERROR", e))
+        else:
+            results.append(("PASS", "no duplicate frontmatter keys"))
 
         # Compatibility validation
         compat = fm.get('compatibility')
@@ -1418,7 +1516,12 @@ def cmd_info(args):
     with open(skill_md, 'r') as f:
         content = f.read()
 
-    fm, body = _parse_frontmatter(content)
+    fm, body, yaml_error = _parse_frontmatter(content)
+
+    if yaml_error is not None:
+        print(f"info: {skill_md}: invalid YAML frontmatter — {yaml_error}",
+              file=sys.stderr)
+        sys.exit(1)
 
     # Structured output modes
     if getattr(args, 'json', False):
@@ -1540,8 +1643,11 @@ def cmd_search(args):
         with open(skill_md, 'r') as f:
             content = f.read()
 
-        fm, body = _parse_frontmatter(content)
+        fm, body, yaml_error = _parse_frontmatter(content)
         if fm is None:
+            if yaml_error is not None:
+                print(f"search: skipping {skill_md} "
+                      f"(invalid YAML — {yaml_error})", file=sys.stderr)
             continue
 
         # Serialize frontmatter as YAML for yq
@@ -1614,7 +1720,10 @@ def _discover_skills(skills_dir):
             continue
         with open(skill_md, 'r') as f:
             content = f.read()
-        fm, _ = _parse_frontmatter(content)
+        fm, _, yaml_error = _parse_frontmatter(content)
+        if fm is None and yaml_error is not None:
+            print(f"generate: warning: invalid YAML frontmatter in {skill_md} — "
+                  f"{yaml_error} (using directory name)", file=sys.stderr)
         name = entry
         desc = ''
         if fm:
@@ -1783,10 +1892,14 @@ def build_parser():
                 contains subdirs with SKILL.md, it validates all of them
 
             Checks:
-              - Frontmatter presence and required fields
+              - Frontmatter presence, valid YAML, no duplicate keys
+              - Text-only fields (name, description, license, compatibility,
+                allowed-tools) contain no ':' character (error)
               - Name format (lowercase, hyphens, length)
-              - Description presence and length
-              - Body line count (warning if over 500)
+              - Description presence, length, no XML/HTML tags
+              - Body starts with a matching H1 heading
+              - Body token estimate (warning if over 5000)
+              - Recommended sections, references format, script permissions
 
             Examples:
               skman.py validate ./my-skill

@@ -3,7 +3,7 @@ name: solid-meta-0-29-4
 description: solid-meta 0.29.4 — async SSR-ready document head management for Solid.js. Provides MetaProvider, Title, Meta, Link, Style, Base, and Stylesheet components for injecting head tags anywhere in the component tree. Covers cascading title/meta deduplication, SSR hydration, SolidStart integration, and server-side getAssets rendering. Use when managing dynamic title, meta, link, style, or base tags in Solid.js apps, handling SEO meta tags per-route, or integrating head management with SolidStart or custom SSR setups.
 license: MIT
 compatibility: "Requires solid-js >=1.8.4 as a peer dependency. Works with SolidStart (file-based routing) and custom SSR via solid-js/web renderToString + getAssets. Node.js 18+ for build tooling."
-allowed-tools: Bash(npm:*) Bash(npx:*) Bash(pnpm:*) Bash(yarn:*) Bash(bun:*) Read
+allowed-tools: Bash(npm) Bash(npx) Bash(pnpm) Bash(yarn) Bash(bun) Read
 metadata:
   tags:
     - javascript

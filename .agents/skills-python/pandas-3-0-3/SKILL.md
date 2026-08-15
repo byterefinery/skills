@@ -6,7 +6,7 @@ description: >
   merging/joining, time series, resampling, rolling windows, string operations, or any
   tabular data processing in Python. Covers pandas 3.0 semantics including dedicated
   string dtype by default, Copy-on-Write behavior, pd.col() expressions, Arrow PyCapsule
-  interface, and anti-joins. Trigger on: DataFrame, Series, read_csv, merge, groupby,
+  interface, and anti-joins. Triggers on DataFrame, Series, read_csv, merge, groupby,
   pivot_table, resample, rolling, time series analysis, ETL pipelines, data cleaning,
   or any mention of pandas dataframes.
 metadata:

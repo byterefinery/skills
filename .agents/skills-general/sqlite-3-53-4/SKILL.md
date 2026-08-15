@@ -8,7 +8,7 @@ description: >
   SQLite in applications, debugging SQLite behavior, or porting between SQLite and
   other RDBMSes. Covers serverless, zero-config, ACID, single-file database engine.
 license: Public Domain
-compatibility: SQLite 3.53.4+ (C library). CLI: sqlite3 command-line tool
+compatibility: SQLite 3.53.4+ (C library); CLI is the sqlite3 command-line tool
 metadata:
   tags:
     - database

@@ -2,7 +2,7 @@
 name: jco-1-24-6
 description: >
   jco (JavaScript Component Object) toolchain for building, transpiling, running, and serving
-  WebAssembly Components in JavaScript. Use when working with WebAssembly Component Model in JS:
+  WebAssembly Components in JavaScript. Use when working with WebAssembly Component Model in JS —
   building components from JS/TS via `jco componentize` (ComponentizeJS), transpiling .wasm
   components to ES modules via `jco transpile`, extracting WIT via `jco wit`, generating
   TypeScript types via `jco guest-types` / `jco types`, running WASI Command components via

@@ -7,7 +7,7 @@ description: >
   splits, market screening, sector/industry data, market status, live WebSocket
   streaming, or ticker search/lookup. Covers Ticker, Tickers, download(), Market,
   Search, Lookup, Sector, Industry, Screener (EquityQuery/FundQuery/ETFQuery),
-  WebSocket/AsyncWebSocket, and Auth. Trigger on: stock price, market data, Yahoo
+  WebSocket/AsyncWebSocket, and Auth. Triggers on stock price, market data, Yahoo
   Finance, yfinance, yf.download, Ticker, OHLCV, financial statements, options chain,
   screener, market cap, earnings, dividends, WebSocket streaming quotes.
 metadata:

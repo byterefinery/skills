@@ -3,14 +3,14 @@ name: docling-mcp-3-0-0
 description: >
   Docling MCP 3.0.0 — Model Context Protocol server that exposes Docling document
   processing as MCP tools. Use when connecting Docling to AI agents via MCP (Claude
-  Desktop, LM Studio, Cursor, etc.). Provides three tool groups: conversion (PDF to
+  Desktop, LM Studio, Cursor, etc.). Provides three tool groups — conversion (PDF to
   DoclingDocument via remote API or local), generation (create/edit documents with
   titles, headings, paragraphs, lists, tables), and manipulation (search, update,
-  delete document items by anchor). Optional tool groups: llama-index-rag (Milvus
+  delete document items by anchor). Optional tool groups include llama-index-rag (Milvus
   vector search), llama-stack-rag (LlamaStack RAG), llama-stack-ie (structured
   extraction). Supports remote mode (Docling Serve API), local mode (offline),
-  and hybrid mode (remote with local fallback). Transports: stdio, SSE, streamable-http.
-  Trigger on: docling-mcp, MCP server for documents, docling agent tools, MCP
+  and hybrid mode (remote with local fallback). Transports are stdio, SSE, and streamable-http.
+  Triggers on docling-mcp, MCP server for documents, docling agent tools, MCP
   document conversion, docling MCP integration, Claude Desktop docling, LM Studio
   docling, document MCP tools.
 license: MIT

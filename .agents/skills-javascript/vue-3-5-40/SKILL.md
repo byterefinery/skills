@@ -2,8 +2,8 @@
 name: vue-3-5-40
 description: Vue.js 3.5.40 — progressive JavaScript framework for building UIs with reactive components. Covers Composition API with script-setup, reactivity (ref, reactive, computed, watch), SFCs, build-less CDN usage, composables, directives, transitions, and the full component model. Use when working with Vue 3 codebases, creating Vue components, debugging reactivity, or scaffolding Vue projects.
 license: MIT
-compatibility: Requires Node.js ^22.18.0 || >=24.12.0 for build setups. Browser: ES modules + import maps support (Safari 16.4+).
-allowed-tools: Bash(npm:*) Bash(npx:*) Bash(pnpm:*) Bash(yarn:*) Bash(bun:*) Read
+compatibility: Requires Node.js ^22.18.0 || >=24.12.0 for build setups. Browser support — ES modules + import maps (Safari 16.4+).
+allowed-tools: Bash(npm) Bash(npx) Bash(pnpm) Bash(yarn) Bash(bun) Read
 metadata:
   tags:
     - javascript

@@ -5,13 +5,13 @@ description: >
   detection and recognition. Use for OCR on PDFs or images, extracting
   text with bounding-box coords and confidence scores, handling rotated pages,
   detecting page orientation or language, or exporting results as JSON or hOCR XML.
-  Two-stage pipeline: text detection (localize words) then recognition (read characters).
+  Two-stage pipeline — text detection (localize words) then recognition (read characters).
   Supports detection architectures (db_resnet34/50, db_mobilenet_v3_large,
   linknet_resnet18/34/50, fast_tiny/small/base) and recognition architectures
   (crnn_vgg16_bn, crnn_mobilenet_v3_small/large, sar_resnet31, master,
   vitstr_small/base, parseq, viptr_tiny). Also provides KIE predictor,
   standalone detection/recognition predictors, and orientation classifiers.
-  Trigger on: docTR, doctr, python-doctr, OCR, text detection, text recognition,
+  Triggers on docTR, doctr, python-doctr, OCR, text detection, text recognition,
   document OCR, word bounding boxes, hOCR export, rotated page OCR,
   page orientation, language detection, KIE, ocr_predictor,
   detection_predictor, recognition_predictor, DocumentFile.

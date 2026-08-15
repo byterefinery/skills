@@ -2,7 +2,7 @@
 name: chronos-forecasting-2-3-0
 description: >
   Chronos 2.3.0 — pretrained foundation models for probabilistic time series forecasting
-  from Amazon Science. Supports three model families: Chronos-2 (120M, multivariate,
+  from Amazon Science. Supports three model families — Chronos-2 (120M, multivariate,
   covariate-aware, cross-learning, fine-tuning), Chronos-Bolt (patch-based, 250x faster),
   and original Chronos (T5-based tokenization). Zero-shot univariate and multivariate
   forecasting with quantile predictions, pandas DataFrame API, fev benchmark integration,

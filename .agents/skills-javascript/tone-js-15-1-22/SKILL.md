@@ -1,6 +1,6 @@
 ---
 name: tone-js-15-1-22
-description: Tone.js 15.1.22 — Web Audio framework for interactive music in the browser. Covers the full API: oscillators, instruments (Synth, PolySynth, Sampler, etc.), effects (Reverb, Delay, Chorus, Distortion, etc.), filters, envelopes, signals, Transport scheduling, Part/Loop/Sequence events, Player/buffers, routing (Panner, Volume, Merge/Split), LFO modulation, and Offline rendering. Use when working with tone@15.1.x, building web synthesizers, music apps, audio effects chains, scheduled compositions, or any browser-based interactive audio project.
+description: Tone.js 15.1.22 — Web Audio framework for interactive music in the browser. Covers the full API — oscillators, instruments (Synth, PolySynth, Sampler, etc.), effects (Reverb, Delay, Chorus, Distortion, etc.), filters, envelopes, signals, Transport scheduling, Part/Loop/Sequence events, Player/buffers, routing (Panner, Volume, Merge/Split), LFO modulation, and Offline rendering. Use when working with tone@15.1.x, building web synthesizers, music apps, audio effects chains, scheduled compositions, or any browser-based interactive audio project.
 metadata:
   tags:
     - javascript

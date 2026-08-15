@@ -4,7 +4,7 @@ description: >
   Python library for generating and verifying TOTP (time-based) and HOTP
   (counter-based) one-time passwords per RFC 6238 / RFC 4226. Use when
   implementing two-factor (2FA) or multi-factor (MFA) authentication,
-  provisioning Google Authenticator-compatible QR codes, parsing otpauth://
+  provisioning Google Authenticator-compatible QR codes, parsing otpauth
   URIs, generating random base32 or hex secrets, verifying user-supplied OTP
   codes, or working with Steam's custom TOTP variant.
 metadata:

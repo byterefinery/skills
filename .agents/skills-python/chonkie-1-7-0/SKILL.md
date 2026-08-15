@@ -3,20 +3,20 @@ name: chonkie-1-7-0
 description: >
   Chonkie 1.7.0 — lightweight text chunking library for RAG pipelines.
   Provides 11 chunkers (Token, Sentence, Recursive, Semantic, Late, Code,
-  Neural, Slumber, Table, Fast, TeraflopAI), fluent Pipeline API (CHOMP:
+  Neural, Slumber, Table, Fast, TeraflopAI), fluent Pipeline API (CHOMP —
   Chef → Chunker → Refinery → Porter/Handshake), 16+ embedding providers,
   10 vector DB handshakes, 5 LLM genies, text/markdown chefs, file fetchers,
   overlap/embedding refineries, JSON/HF Datasets porters, REST API server,
   CLI, and cloud chunking. Use when splitting text for RAG, building
   ingestion pipelines, adding chunk overlap or embeddings, exporting to
-  vector DBs, or running chonkie as a service. Trigger on: chonkie, text
+  vector DBs, or running chonkie as a service. Triggers on chonkie, text
   chunking, RAG, recursive/semantic/sentence/code/late/slumber/neural/fast/
   table/token chunker, pipeline API, overlap/embedding refinery, vector DB
   handshake, chroma/qdrant/pinecone handshake, chonkie serve, chonkie CLI.
 license: Apache-2.0
 compatibility: >
   Python 3.10–3.13. Base install includes tokie tokenizer and chonkie-core
-  (Rust). Optional extras: `chonkie[code]` (tree-sitter), `chonkie[neural]`
+  (Rust). Optional extras are `chonkie[code]` (tree-sitter), `chonkie[neural]`
   (transformers+torch), `chonkie[semantic]` (model2vec), `chonkie[st]`
   (sentence-transformers), `chonkie[openai]`, `chonkie[api]` (FastAPI server),
   `chonkie[all]` for everything. Install via `pip install chonkie`.

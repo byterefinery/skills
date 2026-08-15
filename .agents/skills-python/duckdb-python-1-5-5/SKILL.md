@@ -2,7 +2,7 @@
 name: duckdb-python-1-5-5
 description: DuckDB in-process analytical database for Python — query CSV/Parquet/JSON files, pandas DataFrames, and Arrow tables with SQL. Provides DB-API 2.0 connection, lazy Relation API for method-chained transformations, Python UDFs, and Spark-compatible API. Use for data analysis, ETL pipelines, EDA, and SQL-based data processing in Python.
 license: MIT
-compatibility: Python 3.10+. Install via `pip install duckdb`. Optional deps: pandas, pyarrow, polars, numpy, fsspec, ipython. Install all with `pip install 'duckdb[all]'`.
+compatibility: Python 3.10+. Install via `pip install duckdb`. Optional deps include pandas, pyarrow, polars, numpy, fsspec, and ipython. Install all with `pip install 'duckdb[all]'`.
 metadata:
   tags:
     - database

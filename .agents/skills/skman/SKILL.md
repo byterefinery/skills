@@ -31,35 +31,14 @@ Agent Skills are a lightweight, open format for extending AI agent capabilities 
 ## Usage
 
 ```bash
-# Scaffold a new skill
-skman.py create <name> "<description>"
-skman.py create demo-skill "Dummy example skill" --version 2.4.1
-skman.py create numpy "NumPy skill" --url https://github.com/numpy/numpy/releases/tag/v1.26.0
-
-# Create with scripts (default: Python PEP 723) or shell wrapper
-skman.py create my-skill "Desc" --with-scripts
-skman.py create my-skill "Desc" --with-scripts --lang bash   # shell + _<name>.py
-
-# Validate
-skman.py validate ./my-skill
-skman.py validate --strict ./my-skill
-skman.py validate .agents/skills        # all skills
-
-# Inspect frontmatter
-skman.py info ./my-skill
-skman.py info --json ./my-skill
-
-# Search by frontmatter (requires yq)
-skman.py search '.description | test("pdf"; "i")'
-skman.py search '.metadata.tags | index("python")'
-skman.py search --json '.name, .description'
-
-# Regenerate README
+# Quick reference — details per subcommand below
+skman.py create <name> "<description>" [--with-scripts] [-o ./skills]
+skman.py validate ./my-skill            # single skill
+skman.py validate .agents/skills        # whole collection
+skman.py info ./my-skill [--json]
+skman.py search '<jq-expr>' [--skills-dir ./skills]
 skman.py generate
-
-# Help
-skman.py --help
-skman.py search --help
+skman.py --help                         # or: skman.py <subcommand> --help
 ```
 
 ### Scaffold New Skill
@@ -73,7 +52,7 @@ skman.py create my-skill "Desc" --with-scripts --lang bash   # shell wrapper
 skman.py create my-skill "Desc" -o ./custom-skills
 ```
 
-Validates name and description before creating files. `--url` extracts name/version from GitHub, PyPI, npm, crates.io, GitLab, RubyGems URLs. Explicit `--name`/`--version` override extracted values. LLM fallback: set `SKMAN_LLM_RESPONSE='{"version": "X.Y.Z"}'` env var.
+Validates name and description (format, length, no `:`) before creating files. `--url` extracts name/version from GitHub, PyPI, npm, crates.io, GitLab, RubyGems URLs. Explicit `--name`/`--version` override extracted values. LLM fallback: set `SKMAN_LLM_RESPONSE='{"version": "X.Y.Z"}'` env var.
 
 ### Validate
 
@@ -123,9 +102,6 @@ A skill is a directory containing a `SKILL.md` file. Everything else is optional
 │   └── <skill-name>.py   # Default: Python with PEP 723 shebang (needs uv)
 │   ├── <skill-name>.sh   # Shell mode: bash wrapper (needs python)
 │   └── _<skill-name>.py  # Shell mode: Python impl, no PyPI deps
-│
-> Default: `skman.py create --with-scripts` creates `<name>.py` with PEP 723.
-> Shell mode: `--lang bash` creates `<name>.sh` + `_<name>.py`.
 ├── references/           # Optional: detailed docs loaded on demand (numbered prefix)
 │   └── 01-topic.md
 │   └── 02-abc.md
@@ -139,11 +115,13 @@ A skill is a directory containing a `SKILL.md` file. Everything else is optional
 | Field | Required | Rules |
 |---|---|---|
 | `name` | Yes | 1-64 chars, lowercase letters (including Unicode/i18n), 0-9, hyphens; no leading/trailing/consecutive hyphens; must match directory name exactly (e.g., `demo-skill-2-4-1` for `demo-skill-2-4-1/`); meta skills without versions use plain name (e.g., `skman`, `plan`) |
-| `description` | Yes | Non-empty, max 1024 chars, third-person, must not contain XML/HTML tags (`<tag>`) |
+| `description` | Yes | Non-empty, max 1024 chars, third-person, must not contain XML/HTML tags (`<tag>`) or a `:` character |
 | `license` | No | License name or reference to a bundled license file (e.g., `Apache-2.0`, `Proprietary. LICENSE.txt has complete terms`) |
 | `compatibility` | No | Max 500 chars. Environment requirements — intended product, system packages, network access. Only include if the skill has specific needs |
 | `allowed-tools` | No | Space-separated string of pre-approved tools the skill may use (experimental; support varies by agent) |
 | `metadata` | No | Optional object. May contain `tags` (array of strings, e.g., `["meta", "devops"]`). Validator warns if `metadata` is not a mapping or `tags` is not a string array.
+
+All top-level text fields (`name`, `description`, `license`, `compatibility`, `allowed-tools`, and any unknown string field) must not contain a `:` character. Colons are YAML structural characters — `Use when: X` inside an unquoted scalar is invalid YAML, and naive frontmatter parsers misread them. Rephrase or use `;` instead; the validator errors on any `:` in a text field.
 
 ### Frontmatter Template
 
@@ -153,7 +131,7 @@ name: my-skill
 description: What this skill does and when to use it. Be specific.
 license: Apache-2.0
 compatibility: Requires Python 3.11+ and uv
-allowed-tools: Bash(git:*) Read
+allowed-tools: Read Write
 metadata:
   tags:
     - dev
@@ -166,7 +144,7 @@ Follow these steps in order:
 
 1. **Choose a name** — lowercase, hyphens, numbers only (e.g., `pdf-processing`, `git-8-20-0`). No leading/trailing/consecutive hyphens.
 
-2. **Write the frontmatter** — exactly `name` and `description` at minimum. The `name` must match the directory name exactly (e.g., `name: demo-skill-2-4-1` for `demo-skill-2-4-1/`). The description determines when the agent loads this skill; make it specific.
+2. **Write the frontmatter** — exactly `name` and `description` at minimum. The `name` must match the directory name exactly (e.g., `name: demo-skill-2-4-1` for `demo-skill-2-4-1/`). The description determines when the agent loads this skill; make it specific. Keep text-only fields free of `:` characters (write "Use when X", not "Use when: X").
 
 3. **Write the body** — concise instructions, under 5000 tokens. Must start with a level-1 heading matching `# <name>` or `# <name> <version>`. Structure:
    - `# <name>` (e.g., `# skman`) or `# <name> <version>` (e.g., `# demo-skill 2.4.1`)
@@ -180,7 +158,7 @@ Follow these steps in order:
      - [01-core-expressions](references/01-core-expressions.md) — Symbols, expressions, numbers
      - [02-algebra-polynomials](references/02-algebra-polynomials.md) — Polynomial rings, factoring
      ```
-     Each line: link to the file followed by a dash and a brief topic summary.
+     Each line: link to the file followed by a dash and a brief topic summary. Links to local `references/NN-topic.md` files and external URLs are both acceptable.
 
 4. **Create scripts** — only when the user explicitly requests them. Two conventions:
    - **Default (Python with dependencies):** `scripts/<name>.py` — single file, PEP 723 shebang (`#!/usr/bin/env -S uv run --script`), direct execution. Requires `uv` on PATH.
@@ -212,7 +190,8 @@ Common operations:
 ## Validation
 
 Checks performed:
-- Frontmatter presence and required fields
+- Frontmatter presence, valid YAML (errors on parse failure or non-mapping), no duplicate top-level keys
+- Text-only fields contain no `:` character (errors on any `:` in `name`, `description`, `license`, `compatibility`, `allowed-tools`, or unknown string fields)
 - Name format (case, characters, length, hyphen rules)
 - Description presence, length, and absence of XML/HTML tags
 - `metadata` structure (warns if present but not a mapping; warns if `tags` is not a string array)
@@ -296,6 +275,7 @@ Guidelines:
 - **Default script is Python, not bash** — `--with-scripts` creates `scripts/<name>.py` with PEP 723 shebang. Use `--lang bash` for the shell wrapper + `_<name>.py` convention.
 - **Scaffolded files may lose execute permission** — `skman.py create --with-scripts` sets `chmod 0o755`, but editors or git checkouts can strip it. Always verify with `ls -l <name>.py`; the validator warns if the bit is missing.
 - **`--strict` turns section warnings into errors** — only `## Overview` produces a warning when missing. `## Usage`, `## Gotchas`, and `## References` are truly optional and never warn (knowledge-only skills often have no Usage section). In strict mode, any warning fails validation.
+- **No `:` in text-only frontmatter fields** — `description: Use when: X` is invalid YAML (mapping values are not allowed in this context), and even `foo:bar` confuses naive frontmatter parsers. Keep every top-level scalar string field (`name`, `description`, `license`, `compatibility`, `allowed-tools`) free of colons; rephrase or use `;`. The validator errors on any `:` in these fields, and `create` rejects colon descriptions before scaffolding anything.
 - **Frontmatter `name` must match the directory basename exactly** — e.g., `demo-skill-2-4-1/` requires `name: demo-skill-2-4-1`, `skman/` requires `name: skman`. The validator warns on mismatch. Fix by renaming the directory or correcting the frontmatter.
 - **H1 heading must match `# <name>` or `# <base> <version>`** — the validator errors if the first heading doesn't match. For `skman/` it must be `# skman`; for `demo-skill-2-4-1/` it must be `# demo-skill 2.4.1` (version uses dots, not hyphens). The version in the H1 must correspond to the hyphenated version suffix in the directory/frontmatter name.
 - **`search` requires `yq` on PATH** — install via `pip install yq` (also needs `jq`). Without it, `skman.py search` exits with an error.

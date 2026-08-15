@@ -5,7 +5,7 @@ description: >
   Use when working with ML models, pipelines, preprocessing, model selection, metrics,
   or any data science task using scikit-learn. Covers classification, regression,
   clustering, dimensionality reduction, ensemble methods, hyperparameter tuning,
-  cross-validation, feature engineering, and more. Trigger on: sklearn, scikit-learn,
+  cross-validation, feature engineering, and more. Triggers on sklearn, scikit-learn,
   machine learning, ML pipeline, model training, cross-validation, GridSearchCV,
   Random Forest, SVM, logistic regression, PCA, KMeans, train_test_split, metrics.
 metadata:
