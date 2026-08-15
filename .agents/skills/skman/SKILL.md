@@ -1,8 +1,8 @@
 ---
 name: skman
-description: Introduces the Agent Skills System — a standardized, lightweight, open format for extending AI agent capabilities with specialized knowledge and workflows. Use for scaffolding, validating, searching, and inspecting agent skills (SKILL.md files and other skill's files and directories).
+description: Introduces the Agent Skills System — a standardized, lightweight, open format for extending AI agent capabilities with specialized knowledge and workflows. Use for scaffolding, validating, and inspecting agent skills (SKILL.md files and other skill's files and directories).
 license: Apache-2.0
-compatibility: Requires uv and jq on PATH. PyYAML and yq are declared in the PEP 723 header and auto-resolved by uv — no pip, no local venv.
+compatibility: Requires uv on PATH. PyYAML is declared in the PEP 723 header and auto-resolved by uv — no pip, no local venv.
 metadata:
   tags:
     - meta
@@ -14,18 +14,17 @@ metadata:
 
 # skman
 
-Tools and guidelines for creating, validating, searching, and managing agent skills. Use `skman.py` to scaffold new skill directories, check format compliance, search skills by frontmatter, inspect structure, and regenerate the repository README.
+Tools and guidelines for creating, validating, and managing agent skills. Use `skman.py` to scaffold new skill directories, check format compliance, inspect structure, and regenerate the repository README.
 
 ## Overview
 
-Agent Skills are a lightweight, open format for extending AI agent capabilities with specialized knowledge and workflows. An agent skill is a directory containing a `SKILL.md` file — frontmatter metadata (skill's YAML header) plus concise instructions — optionally accompanied by scripts, references, and assets. This standardized format gives agents new expertise on demand without bloating the context window.
+Agent Skills are a lightweight, open format for extending AI agent capabilities with specialized knowledge and workflows. An agent skill is a directory containing a `SKILL.md` file — frontmatter metadata (the YAML header) plus concise instructions — optionally accompanied by scripts, references, and assets, giving agents new expertise on demand without bloating the context window.
 
-`skman` is the skill for creating, validating, searching, and managing agent skills. It provides five functionalities:
+`skman` is the skill for creating, validating, and managing agent skills. It provides four functionalities:
 
 - **`create`** — Scaffold a new skill directory with SKILL.md, optional scripts, and references
 - **`validate`** — Check a skill against the format specification (frontmatter, naming, structure)
 - **`info`** — Inspect frontmatter, body stats, and heading hierarchy
-- **`search`** — Query skills by frontmatter using jq-style expressions (via `yq`)
 - **`generate`** — Regenerate the repository README.md with skills table and statistics
 
 ## Usage
@@ -36,7 +35,6 @@ skman.py create <name> "<description>" [--with-scripts] [-o ./skills]
 skman.py validate ./my-skill            # single skill
 skman.py validate .agents/skills        # whole collection
 skman.py info ./my-skill [--json]
-skman.py search '<jq-expr>' [--skills-dir ./skills]
 skman.py generate
 skman.py --help                         # or: skman.py <subcommand> --help
 ```
@@ -52,7 +50,7 @@ skman.py create my-skill "Desc" --with-scripts --lang bash   # shell wrapper
 skman.py create my-skill "Desc" -o ./custom-skills
 ```
 
-Validates name and description (format, length, no `:`) before creating files. `--url` extracts name/version from GitHub, PyPI, npm, crates.io, GitLab, RubyGems URLs. Explicit `--name`/`--version` override extracted values. LLM fallback: set `SKMAN_LLM_RESPONSE='{"version": "X.Y.Z"}'` env var.
+Validates name and description (format, length, no `:`) before creating files. `--url` extracts name/version from GitHub, PyPI, npm, crates.io, GitLab, RubyGems URLs. The positional `name` and an explicit `--version` take precedence over values extracted from the URL. LLM fallback: set `SKMAN_LLM_RESPONSE='{"version": "X.Y.Z"}'` env var.
 
 ### Validate
 
@@ -66,27 +64,6 @@ skman.py validate --strict ./my-skill
 # All skills in a collection directory
 skman.py validate .agents/skills
 skman.py validate ./skills-python
-```
-
-### Search
-
-Query skills by frontmatter using jq-style expressions. `yq` is auto-installed by `uv` from the PEP 723 header; `jq` must be on PATH.
-
-```bash
-# Search by description (case-insensitive)
-skman.py search '.description | test("pdf"; "i")'
-
-# Search by tag
-skman.py search '.metadata.tags | index("python")'
-
-# Search by exact license
-skman.py search '.license == "MIT"'
-
-# List all skill names and descriptions as JSON
-skman.py search --json '.name, .description'
-
-# Search a custom collection
-skman.py search --skills-dir ./skills-python '.name'
 ```
 
 ## Skill Format
@@ -142,7 +119,7 @@ Follow these steps in order:
 
 1. **Choose a name** — lowercase, hyphens, numbers only (e.g., `pdf-processing`, `git-8-20-0`). No leading/trailing/consecutive hyphens.
 
-2. **Write the frontmatter** — exactly `name` and `description` at minimum. The `name` must match the directory name exactly (e.g., `name: demo-skill-2-4-1` for `demo-skill-2-4-1/`). The description determines when the agent loads this skill; make it specific. Keep text-only fields free of `:` characters (write "Use when X", not "Use when: X").
+2. **Write the frontmatter** — exactly `name` and `description` at minimum. The `name` must match the directory name exactly. The description determines when the agent loads this skill; make it specific. Keep text-only fields free of `:` characters (write "Use when X", not "Use when: X").
 
 3. **Write the body** — concise instructions, under 5000 tokens. Must start with a level-1 heading matching `# <name>` or `# <name> <version>`. Structure:
    - `# <name>` (e.g., `# skman`) or `# <name> <version>` (e.g., `# demo-skill 2.4.1`)
@@ -161,7 +138,7 @@ Follow these steps in order:
 4. **Create scripts** — only when the user explicitly requests them. Two conventions:
    - **Default (Python with dependencies):** `scripts/<name>.py` — single file, PEP 723 shebang (`#!/usr/bin/env -S uv run --script`), direct execution. Requires `uv` on PATH.
    - **Shell mode (no PyPI deps):** `scripts/<name>.sh` + `scripts/_<name>.py` — bash wrapper delegates to underscore-prefixed Python script directly. Requires only `python` on PATH.
-   Dependent scripts use whatever language the user specifies (Python, JS/Node/Bun/Deno, Lua, Bash, etc.) — never assume a language. Scripts are **executed** (not loaded into context). Include `--help` at every level. Scaffold with `--with-scripts`.
+   Dependent scripts use whatever language the user specifies — never assume one. Scripts are **executed** (not loaded into context). Include `--help` at every level. Scaffold with `--with-scripts`.
 
 5. **Validate** — run the validation script:
    ```bash
@@ -170,11 +147,7 @@ Follow these steps in order:
 
 ### Manual Creation
 
-When writing files directly, ensure:
-- Directory is named after the skill (e.g., `skman`) or `<skill-name>-<version>` (e.g., `demo-skill-2-4-1`)
-- Frontmatter `name` must match the directory name exactly (e.g., `name: demo-skill-2-4-1` for `demo-skill-2-4-1/`, or `name: skman` for `skman/`)
-- `SKILL.md` exists at the directory root
-- Body starts with `# <name>` or `# <name> <version>` matching the directory (e.g., `# demo-skill 2.4.1` for `demo-skill-2-4-1/`)
+When writing files directly, the same rules apply: the directory is named after the skill (or `<skill-name>-<version>`), `SKILL.md` sits at its root, and the frontmatter `name` plus the first H1 match the directory (see the Gotchas below).
 
 ## Editing a Skill
 
@@ -225,9 +198,9 @@ Checks performed:
 - Any libraries, frameworks, or dependencies are allowed when the user explicitly requests them
 
 ### Match Specificity to Task Fragility
-- **High freedom** (text instructions): multiple valid approaches, context-dependent decisions
-- **Medium freedom** (pseudocode/scripts with parameters): preferred pattern exists, some variation OK
-- **Low freedom** (exact commands): fragile operations, consistency is critical
+- **High freedom** (text): multiple valid approaches, context-dependent decisions
+- **Medium** (scripts with parameters): preferred pattern exists, some variation OK
+- **Low** (exact commands): fragile operations, consistency is critical
 
 ### Description Writing
 - Always third person ("Processes Excel files" not "I can help you")
@@ -251,7 +224,7 @@ Guidelines:
 - Move detailed content to `references/` files linked from SKILL.md
 - Avoid deeply nested references — all reference files should link directly from SKILL.md
 - Include a table of contents in reference files longer than 100 lines
-- **Reference file naming** — use numeric prefixes (`01-`, `02-`, `03-`, …) for deterministic ordering and easy insertion. Files should be named `NN-topic.md` where `NN` is an incrementing number starting from 01
+- **Reference file naming** — use incrementing numeric prefixes (`01-`, `02-`, …) so files are named `NN-topic.md`, giving deterministic ordering and easy insertion
 - **Multi-domain skills** — when a skill supports multiple variants (frameworks, platforms), organize by domain in references:
   ```
   cloud-deploy/
@@ -263,9 +236,7 @@ Guidelines:
   ```
 
 ### Model Compatibility
-- SLMs (small models): need more explicit guidance, numbered steps, less ambiguity
-- LLMs (large models): prefer concise instructions, avoid over-explaining
-- Aim for instructions that work across both: clear structure, explicit rules, no fluff
+SLMs need more explicit guidance and numbered steps; LLMs prefer concise instructions without over-explaining. Aim for clear structure and explicit rules that work across both.
 
 ## Gotchas
 
@@ -276,7 +247,6 @@ Guidelines:
 - **No `:` in text-only frontmatter fields** — `description: Use when: X` is invalid YAML (mapping values are not allowed in this context), and even `foo:bar` confuses naive frontmatter parsers. Keep every top-level scalar string field (`name`, `description`, `license`, `compatibility`) free of colons; rephrase or use `;`. The validator errors on any `:` in these fields, and `create` rejects colon descriptions before scaffolding anything.
 - **Frontmatter `name` must match the directory basename exactly** — e.g., `demo-skill-2-4-1/` requires `name: demo-skill-2-4-1`, `skman/` requires `name: skman`. The validator warns on mismatch. Fix by renaming the directory or correcting the frontmatter.
 - **H1 heading must match `# <name>` or `# <base> <version>`** — the validator errors if the first heading doesn't match. For `skman/` it must be `# skman`; for `demo-skill-2-4-1/` it must be `# demo-skill 2.4.1` (version uses dots, not hyphens). The version in the H1 must correspond to the hyphenated version suffix in the directory/frontmatter name.
-- **`search` needs `yq` and `jq`** — run `skman.py search` via the PEP 723 shebang and `uv` auto-installs `yq` into an ephemeral environment; only the system `jq` binary must be on PATH. Without `jq`, `skman.py search` exits with an error.
 - **Reference files are loaded on demand, not into context** — keep SKILL.md self-contained for core instructions; move deep-dive content to `references/NN-topic.md` and link from the body.
 - **PEP 723 block is mandatory for Python scripts** — every Python script must include the `# /// script ... # ///` metadata block. `uv run` depends on it to resolve dependencies. The block goes at the top of the file, after the shebang. Without it, `uv run script.py` runs with no dependency management.
 - **Clone repos locally before studying them** — when a URL is given as source material to study or analyze for writing a skill, check whether it points to a code repository (GitHub, GitLab, Bitbucket, etc.). If so, clone it into a temporary directory first and read files from the local copy. Fetching individual files over the network is expensive in both time and rate limits; a single `git clone` gives you the full tree instantly. Clean up the temp directory after analysis.

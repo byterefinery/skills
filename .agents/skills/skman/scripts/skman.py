@@ -2,7 +2,7 @@
 #
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["PyYAML", "yq"]
+# dependencies = ["PyYAML"]
 # ///
 
 """skman — Skill Manager: scaffold, validate, and inspect agent skills.
@@ -12,15 +12,13 @@ Usage:
     skman.py create --help
     skman.py validate --help
     skman.py info --help
-    skman.py search --help
+    skman.py generate --help
 """
 
 import argparse
 import json
 import os
 import re
-import shutil
-import subprocess
 import sys
 import textwrap
 import unicodedata
@@ -39,7 +37,6 @@ MAX_COMPATIBILITY_LEN = 500
 FRONTMATTER_RE = re.compile(
     r'^---\s*\n(?P<content>.*?)^---\s*\n', re.MULTILINE | re.DOTALL
 )
-YAML_LINE_RE = re.compile(r'^(?P<key>[a-z][a-z0-9_-]*)\s*:\s*(?P<value>.*)$')
 
 BODY_TEMPLATE = textwrap.dedent("""\
 # {title}
@@ -88,155 +85,86 @@ BODY_TEMPLATE_WITH_SHELL_SCRIPT = textwrap.dedent("""\
 # e.g. "demo-skill-2-4-1" -> "2-4-1", "git-8-20-0" -> "8-20-0"
 VERSION_SUFFIX_RE = re.compile(r'-(\d+(?:-\d+)+)$')
 
+# Warns when missing — every skill should explain what it does.
+# ## Usage, ## Gotchas, and ## References are truly optional (never warn).
+RECOMMENDED_SECTIONS = {'## Overview'}
+
 # ---------------------------------------------------------------------------
 # URL patterns for name/version extraction
 # ---------------------------------------------------------------------------
-# Each entry: (compiled_regex, name_group, version_group_or_None)
-# Tried in order — first match wins.
+# Tried in order — first match wins. Each regex captures (name, version);
+# the version group may be absent (None). Case-insensitive so the name in
+# the result preserves the original casing of the URL.
 
 _URL_PATTERNS = [
-    # GitHub: /{user}/{repo}/releases/tag/v{ver}
-    (re.compile(
-        r'github\.com/[^/]+/([^/]+)/releases/tag/v?([^?#/]+)'
-    ), '1', '2'),
-    # GitHub: /{user}/{repo}/tree/v{ver}
-    (re.compile(
-        r'github\.com/[^/]+/([^/]+)/tree/v?([^?#/]+)'
-    ), '1', '2'),
-    # GitHub: /{user}/{repo}/-/tags/v{ver} (GitLab-style also on github enterprise)
-    (re.compile(
-        r'github\.com/[^/]+/([^/]+)/-/tags/v?([^?#/]+)'
-    ), '1', '2'),
-    # GitLab: /{user}/{repo}/-/tags/v{ver}
-    (re.compile(
-        r'gitlab\.com/[^/]+/([^/]+)/-/tags/v?([^?#/]+)'
-    ), '1', '2'),
-    # GitLab: /{user}/{repo}/tags/v{ver}
-    (re.compile(
-        r'gitlab\.com/[^/]+/([^/]+)/tags/v?([^?#/]+)'
-    ), '1', '2'),
-    # PyPI: pypi.org/project/{pkg}/{ver}
-    (re.compile(
-        r'pypi\.org/project/([^/]+)/([^?#/]+)'
-    ), '1', '2'),
-    # npm: npmjs.com/package/{pkg}/v/{ver}
-    (re.compile(
-        r'npmjs\.com/package/([^/]+)/v/([^?#/]+)'
-    ), '1', '2'),
-    # crates.io: crates.io/crates/{pkg}/{ver}
-    (re.compile(
-        r'crates\.io/crates/([^/]+)/([^?#/]+)'
-    ), '1', '2'),
-    # RubyGems: rubygems.org/gems/{gem}/{ver}
-    (re.compile(
-        r'rubygems\.org/gems/([^/]+)/([^?#/]+)'
-    ), '1', '2'),
-    # Go pkg: pkg.go.dev/{module}/v{ver}
-    (re.compile(
-        r'pkg\.go\.dev/([^/]+)/v?([^?#/]+)'
-    ), '1', '2'),
-    # npm (no version): npmjs.com/package/{pkg}
-    (re.compile(
-        r'npmjs\.com/package/([^/?#/]+)'
-    ), '1', None),
-    # crates.io (no version): crates.io/crates/{pkg}
-    (re.compile(
-        r'crates\.io/crates/([^/?#/]+)'
-    ), '1', None),
-    # GitHub (no version): github.com/{user}/{repo}[.git]
-    (re.compile(
-        r'github\.com/[^/]+/([^/.]+)(?:\.git)?(?:[?#/].*)?$'
-    ), '1', None),
-    # GitLab (no version): gitlab.com/{user}/{repo}[.git]
-    (re.compile(
-        r'gitlab\.com/[^/]+/([^/.]+)(?:\.git)?(?:[?#/].*)?$'
-    ), '1', None),
+    # GitHub: /{user}/{repo} with optional /releases/tag, /tree, /-/tags
+    re.compile(
+        r'github\.com/[^/]+/([^/.]+?)(?:\.git)?'
+        r'(?:/(?:releases/tag|tree|-/tags)/v?([^?#/]+))?'
+        r'(?:[?#/].*)?$', re.IGNORECASE),
+    # GitLab: /{user}/{repo} with optional /-/tags, /tags
+    re.compile(
+        r'gitlab\.com/[^/]+/([^/.]+?)(?:\.git)?'
+        r'(?:/(?:-/tags|tags)/v?([^?#/]+))?'
+        r'(?:[?#/].*)?$', re.IGNORECASE),
+    # npm: npmjs.com/package/{pkg}[/v/{ver}]
+    re.compile(
+        r'npmjs\.com/package/([^/?#]+)(?:/v/([^?#/]+))?', re.IGNORECASE),
+    # PyPI, crates.io, RubyGems, Go: {registry}/{segment}/{pkg}/[v]{ver}
+    re.compile(
+        r'(?:pypi\.org/project|crates\.io/crates|rubygems\.org/gems|pkg\.go\.dev)/'
+        r'([^/?#]+)/v?([^/?#]+)', re.IGNORECASE),
+    # crates.io without version: crates.io/crates/{pkg}
+    re.compile(r'crates\.io/crates/([^/?#]+)', re.IGNORECASE),
 ]
 
 
 def _extract_name_version(url):
     """Extract (name, version) from a package/repo URL.
 
-    Tries known registry patterns (GitHub, PyPI, npm, crates.io, etc.).
-    Returns (name, version) where version may be None.
-    Raises ValueError if URL is unrecognizable.
+    Tries known registry patterns (GitHub, GitLab, PyPI, npm, crates.io,
+    RubyGems, pkg.go.dev). Returns (name, version) where version may be
+    None. Raises ValueError if the URL is unrecognizable.
     """
-    url = url.strip().lower()
-
-    # Normalize: remove trailing slashes
-    url = url.rstrip('/')
-
-    for pattern, name_grp, ver_grp in _URL_PATTERNS:
+    url = url.strip().rstrip('/')
+    for pattern in _URL_PATTERNS:
         m = pattern.search(url)
         if m:
-            name = m.group(int(name_grp))
-            # Restore original case for name from the original URL
-            # (patterns matched against lowered url, so grab from original)
-            orig_url = url  # already lowered; caller should preserve case if needed
-            version = m.group(int(ver_grp)).strip() if ver_grp else None
-            # Strip leading 'v' from version
+            name = m.group(1).removesuffix('.git')
+            version = m.group(2)
             if version and version.startswith('v'):
                 version = version[1:]
-            # Strip .git from name
-            name = name.removesuffix('.git')
-            return name, version if version else None
+            return name, version or None
 
     raise ValueError(f"unrecognized URL pattern: {url}")
 
 
 def _llm_extract_version(url, name):
-    """Fallback: prompt the agent to extract version from URL via LLM.
+    """Fallback for version extraction when the URL is unrecognized.
 
-    Since skman is a standalone script, this prints a structured prompt
-    to stderr and reads optional JSON response from SKMAN_LLM_RESPONSE
-    env var or stdin (if piped).
-
-    Returns version string or None.
+    A standalone script cannot call an LLM, so the agent supplies the
+    answer by setting SKMAN_LLM_RESPONSE='{"version": "X.Y.Z"}' before
+    re-running. Returns a version string or None.
     """
-    # Check for pre-provided LLM response (agent sets this env var)
     env_response = os.environ.get('SKMAN_LLM_RESPONSE', '').strip()
     if env_response:
         try:
-            import json
-            data = json.loads(env_response)
-            ver = data.get('version')
+            ver = json.loads(env_response).get('version')
             if ver:
                 return str(ver).lstrip('v')
-        except (json.JSONDecodeError, AttributeError):
+        except (json.JSONDecodeError, AttributeError, TypeError):
             pass
 
-    # Print prompt for the agent to process
     print(
         f"create: could not extract version from URL. "
         f"Please provide version for '{name}' from: {url}",
         file=sys.stderr,
     )
     print(
-        f"  Set SKMAN_LLM_RESPONSE='{{\"version\": \"X.Y.Z\"}}' or pass --version explicitly.",
+        '  Set SKMAN_LLM_RESPONSE=\'{"version": "X.Y.Z"}\' or pass --version explicitly.',
         file=sys.stderr,
     )
     return None
-
-
-# Restore case: re-extract name from original (non-lowered) URL
-def _extract_name_version_preserve_case(url):
-    """Extract (name, version) preserving original casing of the name."""
-    stripped = url.strip()
-    lowered = stripped.lower().rstrip('/')
-
-    for pattern, name_grp, ver_grp in _URL_PATTERNS:
-        m = pattern.search(lowered)
-        if m:
-            start, end = m.start(int(name_grp)), m.end(int(name_grp))
-            name = stripped[start:end]  # grab from original (preserves case)
-            version = m.group(int(ver_grp)).strip() if ver_grp else None
-            if version and version.startswith('v'):
-                version = version[1:]
-            name = name.removesuffix('.git')
-            return name, version if version else None
-
-    raise ValueError(f"unrecognized URL pattern: {url}")
-
 
 
 # ---------------------------------------------------------------------------
@@ -265,14 +193,26 @@ _CJK_RE = re.compile(
 )
 
 
+def _chars_to_tokens(text, in_code=False):
+    """Convert a chunk of text to an estimated token count."""
+    chars = len(text)
+    if chars == 0:
+        return 0
+
+    cjk_ratio = len(_CJK_RE.findall(text)) / chars
+    if cjk_ratio > 0.3:
+        return max(1, int(chars / _CHARS_PER_TOKEN_CJK))
+    if in_code:
+        return max(1, int(chars / _CHARS_PER_TOKEN_CODE))
+    return max(1, int(chars / _CHARS_PER_TOKEN_PROSE))
+
+
 def _estimate_tokens(text):
     """Estimate the number of tokens in *text*.
 
     Splits the text into prose regions and fenced code blocks, applying
-    different char-per-token ratios.  Returns an integer token count.
-
-    The estimate is conservative (tends to overcount slightly) so that
-    warnings trigger early rather than late.
+    different char-per-token ratios. The estimate is conservative (tends
+    to overcount slightly) so warnings trigger early rather than late.
     """
     if not text:
         return 0
@@ -280,228 +220,90 @@ def _estimate_tokens(text):
     total = 0
     in_fence = False
     fence_chars = 0
-    current_chunk = []
+    chunk = []
 
     for line in text.splitlines(keepends=True):
-        stripped = line.strip()
-        if stripped.startswith('```'):
-            # Flush accumulated chunk before toggling fence state
-            if current_chunk:
-                total += _chars_to_tokens(''.join(current_chunk), in_code=False)
-                current_chunk = []
+        if line.strip().startswith('```'):
+            if chunk:
+                total += _chars_to_tokens(''.join(chunk), in_code=in_fence)
+                chunk = []
             in_fence = not in_fence
             fence_chars += len(line)
             continue
+        chunk.append(line)
 
-        current_chunk.append(line)
-
-    # Flush remaining chunk
-    if current_chunk:
-        total += _chars_to_tokens(''.join(current_chunk), in_code=in_fence)
+    if chunk:
+        total += _chars_to_tokens(''.join(chunk), in_code=in_fence)
 
     # Fence delimiters themselves count as tokens too
     total += fence_chars // 3
-
     return max(1, total)
 
 
-def _chars_to_tokens(text, in_code=False):
-    """Convert a chunk of text to an estimated token count."""
-    chars = len(text)
-    if chars == 0:
-        return 0
-
-    # Check for CJK-heavy content
-    cjk_count = len(_CJK_RE.findall(text))
-    cjk_ratio = cjk_count / chars if chars else 0
-
-    if cjk_ratio > 0.3:
-        # CJK-heavy content
-        return max(1, int(chars / _CHARS_PER_TOKEN_CJK))
-
-    if in_code:
-        return max(1, int(chars / _CHARS_PER_TOKEN_CODE))
-
-    return max(1, int(chars / _CHARS_PER_TOKEN_PROSE))
-
-
 # ---------------------------------------------------------------------------
-# Helpers
+# Frontmatter parsing / serialization (PyYAML)
 # ---------------------------------------------------------------------------
 
 def _parse_frontmatter(text):
-    """Return (frontmatter_dict, body_text, yaml_error).
+    """Return (frontmatter, body, yaml_error).
 
-    Uses PyYAML (yaml.safe_load) for robust parsing of all YAML constructs:
-    scalars, block literals, folded strings, nested mappings, lists, etc.
-
-    Return values:
-      (fm, body, None)   — frontmatter parsed OK (dict; {} if block is empty)
+      (fm, body, None)   — frontmatter parsed OK ({} if the block is empty)
       (None, text, None) — no frontmatter block found
-      (None, body, err)  — frontmatter block exists but is not a valid YAML
-                           mapping (PyYAML available); err is a one-line
-                           explanation of the parse failure
-
-    Invalid YAML is reported as an error instead of silently falling back to
-    the regex parser — falling back would mask genuinely broken frontmatter.
-    The regex parser is only used when PyYAML is unavailable.
+      (None, body, err)  — frontmatter block exists but is not a valid
+                           YAML mapping; err explains the failure
     """
     m = FRONTMATTER_RE.match(text)
     if not m:
         return None, text, None
     body = text[m.end():]
-    raw = m.group('content')
-    if yaml is not None:
-        try:
-            fm = yaml.safe_load(raw)
-        except yaml.YAMLError as e:
-            err = ' '.join(str(e).split())
-            return None, body, f"YAML parse error: {err}"
-        if fm is None:
-            fm = {}
-        if not isinstance(fm, dict):
-            return None, body, (
-                f"frontmatter must be a YAML mapping "
-                f"(got {type(fm).__name__})"
-            )
-        return fm, body, None
-    # Legacy regex-based parser — only used when PyYAML is unavailable
-    fm = {}
-    lines = raw.splitlines()
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        stripped = line.strip()
-        if not stripped or stripped.startswith('#'):
-            i += 1
-            continue
-        lm = YAML_LINE_RE.match(stripped)
-        if not lm:
-            i += 1
-            continue
-        key = lm.group('key')
-        value = lm.group('value').strip()
-        if value in ('|', '>'):
-            i += 1
-            block_lines = []
-            while i < len(lines):
-                bline = lines[i]
-                if bline and (bline[0] == ' ' or bline[0] == '\t'):
-                    block_lines.append(bline.strip())
-                    i += 1
-                else:
-                    break
-            fm[key] = '\n'.join(block_lines)
-            continue
-        if value.startswith('"') and not value.endswith('"'):
-            i += 1
-            parts = [value[1:]]
-            while i < len(lines):
-                cline = lines[i].strip()
-                if cline.endswith('"'):
-                    parts.append(cline[:-1])
-                    break
-                parts.append(cline)
-                i += 1
-            fm[key] = '\n'.join(parts)
-            continue
-        if value.startswith("'") and not value.endswith("'"):
-            i += 1
-            parts = [value[1:]]
-            while i < len(lines):
-                cline = lines[i].strip()
-                if cline.endswith("'"):
-                    parts.append(cline[:-1])
-                    break
-                parts.append(cline)
-                i += 1
-            fm[key] = '\n'.join(parts)
-            continue
-        if not value:
-            i += 1
-            child = {}
-            while i < len(lines):
-                nline = lines[i]
-                if not nline or nline[0] not in (' ', '\t'):
-                    break
-                nstripped = nline.strip()
-                if not nstripped or nstripped.startswith('#'):
-                    i += 1
-                    continue
-                if nstripped.startswith('- '):
-                    list_items = [nstripped[2:].strip()]
-                    i += 1
-                    while i < len(lines):
-                        lline = lines[i]
-                        if not lline or lline[0] not in (' ', '\t'):
-                            break
-                        lstripped = lline.strip()
-                        if lstripped.startswith('- '):
-                            list_items.append(lstripped[2:].strip())
-                            i += 1
-                        elif not lstripped or lstripped.startswith('#'):
-                            i += 1
-                        else:
-                            break
-                    if child:
-                        last_key = list(child.keys())[-1]
-                        child[last_key] = list_items
-                    continue
-                slm = YAML_LINE_RE.match(nstripped)
-                if slm:
-                    skey = slm.group('key')
-                    sval = slm.group('value').strip()
-                    child[skey] = {} if not sval else sval
-                    i += 1
-                else:
-                    i += 1
-            fm[key] = child
-            continue
-        i += 1
-        while i < len(lines):
-            next_line = lines[i]
-            if not next_line or next_line[0] in (' ', '\t'):
-                cont = next_line.strip()
-                if cont:
-                    value += ' ' + cont
-                i += 1
-            else:
-                break
-        fm[key] = value
+    try:
+        fm = yaml.safe_load(m.group('content'))
+    except yaml.YAMLError as e:
+        return None, body, f"YAML parse error: {' '.join(str(e).split())}"
+    if fm is None:
+        fm = {}
+    if not isinstance(fm, dict):
+        return None, body, f"frontmatter must be a YAML mapping (got {type(fm).__name__})"
     return fm, body, None
 
 
 def _build_frontmatter_yaml(data):
-    """Serialize a dict to a YAML frontmatter block (--- ... ---).
+    """Serialize *data* to a YAML frontmatter block (--- ... ---)."""
+    raw = yaml.dump(
+        data, default_flow_style=False, sort_keys=False,
+        allow_unicode=True, width=1000,  # avoid line wrapping
+    ).rstrip('\n')
+    return f"---\n{raw}\n---\n"
 
-    Uses PyYAML if available, falls back to manual serialization.
+
+def _check_duplicate_frontmatter_keys(text):
+    """Return error strings for duplicate top-level YAML keys.
+
+    PyYAML silently accepts duplicate keys (last value wins); flag them
+    since a duplicate almost always indicates a mistake. Only column-0
+    keys are matched, so nested/indented keys never count.
     """
-    if yaml is not None:
-        raw = yaml.dump(
-            data,
-            default_flow_style=False,
-            sort_keys=False,
-            allow_unicode=True,
-            width=1000,  # avoid line wrapping
-        ).rstrip('\n')
-        return f"---\n{raw}\n---\n"
-    # Fallback: manual serialization
-    lines = ['---']
-    for key, value in data.items():
-        if isinstance(value, dict):
-            lines.append(f"{key}:")
-            for k2, v2 in value.items():
-                if isinstance(v2, list):
-                    lines.append(f"  {k2}:")
-                    for item in v2:
-                        lines.append(f"    - {item}")
-                else:
-                    lines.append(f"  {k2}: {v2}")
-        else:
-            lines.append(f"{key}: {value}")
-    lines.append('---')
-    return '\n'.join(lines) + '\n'
+    m = FRONTMATTER_RE.match(text)
+    if not m:
+        return []
+    counts = {}
+    for line in m.group('content').splitlines():
+        lm = re.match(r'^([A-Za-z0-9_-]+)\s*:', line)
+        if lm:
+            key = lm.group(1)
+            counts[key] = counts.get(key, 0) + 1
+    dups = sorted(k for k, n in counts.items() if n > 1)
+    if dups:
+        return [
+            f"duplicate frontmatter key(s): {', '.join(dups)} "
+            f"(each key may appear at most once)"
+        ]
+    return []
 
+
+# ---------------------------------------------------------------------------
+# Frontmatter field validation
+# ---------------------------------------------------------------------------
 
 def _validate_name(name):
     """Return list of error strings (empty = valid).
@@ -522,22 +324,17 @@ def _validate_name(name):
 
     if len(name) > MAX_NAME_LEN:
         errors.append(f"name exceeds {MAX_NAME_LEN} characters ({len(name)})")
-
     if name != name.lower():
         errors.append("name must be lowercase")
-
     if name.startswith("-") or name.endswith("-"):
         errors.append("name cannot start or end with a hyphen")
-
     if "--" in name:
         errors.append("name cannot contain consecutive hyphens")
-
     if not all(c.isalnum() or c == "-" for c in name):
         errors.append(
             "name must contain only letters, digits, and hyphens; "
             "no leading/trailing/consecutive hyphens"
         )
-
     return errors
 
 
@@ -554,48 +351,17 @@ def _validate_description(desc):
         errors.append("description is empty (required)")
         return errors
     if len(desc) > MAX_DESC_LEN:
-        errors.append(
-            f"description exceeds {MAX_DESC_LEN} characters ({len(desc)})"
-        )
+        errors.append(f"description exceeds {MAX_DESC_LEN} characters ({len(desc)})")
     if re.search(r'<[a-zA-Z/][^>]*>', desc):
         errors.append("description must not contain XML/HTML tags")
     return errors
 
 
-def _validate_metadata(metadata):
-    """Return list of warning strings for optional metadata field.
-
-    metadata should be a dict (mapping). If present, 'tags' must be a list of strings.
-    Returns warnings only (metadata is optional).
-    """
-    warnings = []
-    if metadata is None:
-        return warnings
-    if not isinstance(metadata, dict):
-        warnings.append(
-            f"metadata should be a mapping (got {type(metadata).__name__})"
-        )
-        return warnings
-    tags = metadata.get('tags')
-    if tags is not None:
-        if not isinstance(tags, list):
-            warnings.append(
-                f"metadata.tags should be an array of strings (got {type(tags).__name__})"
-            )
-        elif not all(isinstance(t, str) for t in tags):
-            non_str = [t for t in tags if not isinstance(t, str)]
-            warnings.append(
-                f"metadata.tags must contain only strings (found: {non_str})"
-            )
-    return warnings
-
-
 def _validate_compatibility(compat):
     """Return list of error strings for the optional compatibility field."""
-    errors = []
     if not isinstance(compat, str):
-        errors.append("compatibility must be a string")
-        return errors
+        return ["compatibility must be a string"]
+    errors = []
     if len(compat) > MAX_COMPATIBILITY_LEN:
         errors.append(
             f"compatibility exceeds {MAX_COMPATIBILITY_LEN} characters ({len(compat)})"
@@ -603,14 +369,33 @@ def _validate_compatibility(compat):
     return errors
 
 
+def _validate_metadata(metadata):
+    """Return list of warning strings for the optional metadata field.
+
+    metadata should be a mapping; if present, 'tags' must be a list of
+    strings. Returns warnings only (metadata is optional).
+    """
+    if metadata is None:
+        return []
+    if not isinstance(metadata, dict):
+        return [f"metadata should be a mapping (got {type(metadata).__name__})"]
+    tags = metadata.get('tags')
+    if tags is None:
+        return []
+    if not isinstance(tags, list):
+        return [f"metadata.tags should be an array of strings (got {type(tags).__name__})"]
+    if not all(isinstance(t, str) for t in tags):
+        non_str = [t for t in tags if not isinstance(t, str)]
+        return [f"metadata.tags must contain only strings (found: {non_str})"]
+    return []
+
+
 def _validate_text_fields(fm):
     """Return list of error strings for text-only frontmatter fields.
 
-    Text-only fields are the top-level scalar string values (name,
-    description, license, compatibility, and any unknown string field). They must not contain a ':' character — colons are YAML
-    structural characters ('value: more' inside an unquoted scalar is
-    invalid YAML) and naive frontmatter parsers misread them. Rephrase or
-    use ';' instead.
+    Top-level scalar string values must not contain a ':' character —
+    colons are YAML structural characters and naive frontmatter parsers
+    misread them. Rephrase or use ';' instead.
     """
     errors = []
     if not isinstance(fm, dict):
@@ -625,51 +410,194 @@ def _validate_text_fields(fm):
     return errors
 
 
-def _check_duplicate_frontmatter_keys(raw):
-    """Return list of error strings for duplicate top-level YAML keys.
+# ---------------------------------------------------------------------------
+# Body / structure checks
+# ---------------------------------------------------------------------------
+# Each checker returns a list of (label, message) tuples where label is one
+# of "PASS", "WARN", "ERROR". A PASS entry is emitted when the check runs
+# and finds nothing to report.
 
-    PyYAML silently accepts duplicate keys (last value wins); flag them
-    since a duplicate almost always indicates a mistake. Only column-0
-    keys are matched, so nested/indented keys never count.
+def _iter_headings(body):
+    """Yield heading lines from *body*, skipping fenced code blocks."""
+    in_fence = False
+    for line in body.splitlines():
+        stripped = line.strip()
+        if stripped.startswith('```'):
+            in_fence = not in_fence
+            continue
+        if not in_fence and stripped.startswith('#'):
+            yield stripped
+
+
+def _check_sections(body):
+    """Check for recommended sections.
+
+    ## Overview warns if missing — every skill should explain what it does.
+    ## Usage, ## Gotchas, and ## References are truly optional — no warning.
     """
-    errors = []
-    if not raw:
-        return errors
-    counts = {}
-    for line in raw.splitlines():
-        m = re.match(r'^([A-Za-z0-9_-]+)\s*:', line)
+    missing = RECOMMENDED_SECTIONS - set(_iter_headings(body))
+    if missing:
+        return [("WARN", f"missing recommended section(s): {', '.join(sorted(missing))}")]
+    return [("PASS", "all recommended sections present")]
+
+
+def _check_references_section(body):
+    """Check that a ## References section (if present) uses a bulleted list.
+
+    Tables are not allowed. Expected lines look like
+    '- [01-topic](references/01-topic.md) — description'; links to local
+    reference files or external URLs are both valid.
+    """
+    lines = body.splitlines()
+    in_fence = False
+    start = None
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith('```'):
+            in_fence = not in_fence
+            continue
+        if not in_fence and stripped == '## References':
+            start = i
+            break
+
+    if start is None:
+        return [("PASS", "references section format is correct (or absent)")]
+
+    # Collect lines after ## References until next heading, fence, or EOF
+    section = []
+    for line in lines[start + 1:]:
+        stripped = line.strip()
+        if (stripped.startswith('```')
+                or re.match(r'^#{1,6}\s', stripped)
+                or re.match(r'^#{1,6}$', stripped)):
+            break
+        section.append(stripped)
+
+    bullet_ref = re.compile(
+        r'^-\s+\[.+\]\((?:references/[^)]+|https?://[^)]+)\)'
+    )
+    has_bullets = any(
+        bullet_ref.match(l) for l in section if l and not l.startswith('|')
+    )
+    has_table = sum(1 for l in section if l.startswith('|')) > 1
+
+    if has_table and not has_bullets:
+        return [("WARN",
+                 "## References uses a table format; use a bulleted list instead "
+                 "(e.g. '- [01-topic](references/01-topic.md) — description')")]
+    if not has_bullets:
+        return [("WARN",
+                 "## References section does not contain a bulleted list of reference links; "
+                 "expected lines like '- [01-topic](references/01-topic.md) — description' "
+                 "or '- [Title](https://example.com) — description")]
+    return [("PASS", "references section format is correct (or absent)")]
+
+
+def _check_reference_files(skill_dir):
+    """Check that files in references/ follow NN-topic.md naming with
+    sequential, gap-free prefixes.
+    """
+    ref_dir = os.path.join(skill_dir, 'references')
+    if not os.path.isdir(ref_dir):
+        return [("PASS", "reference files follow NN-topic.md naming (or absent)")]
+
+    files = sorted(
+        e for e in os.listdir(ref_dir)
+        if os.path.isfile(os.path.join(ref_dir, e))
+    )
+    if not files:
+        return [("WARN", "references/ directory is empty")]
+
+    prefix_re = re.compile(r'^(\d{2,})-(.+\.md)$')
+    found, bad = [], []
+    for fname in files:
+        m = prefix_re.match(fname)
         if m:
-            key = m.group(1)
-            counts[key] = counts.get(key, 0) + 1
-    dups = sorted(k for k, n in counts.items() if n > 1)
-    if dups:
-        errors.append(
-            f"duplicate frontmatter key(s): {', '.join(dups)} "
-            f"(each key may appear at most once)"
-        )
-    return errors
+            found.append(int(m.group(1)))
+        else:
+            bad.append(fname)
+
+    found.sort()
+    result = []
+    if bad:
+        result.append(("WARN",
+                       f"references/ file(s) missing numeric prefix: "
+                       f"{', '.join(bad)} (expected NN-topic.md)"))
+
+    if found:
+        expected = list(range(1, len(found) + 1))
+        if found != expected:
+            seen, gaps, dups = set(), [], []
+            for p in found:
+                if p in seen:
+                    dups.append(f"{p:02d}")
+                seen.add(p)
+            gaps = [f"{m:02d}" for m in expected if m not in seen]
+
+            detail = []
+            if gaps:
+                detail.append(f"missing gaps: {', '.join(gaps)}")
+            if dups:
+                detail.append(f"duplicate prefixes: {', '.join(dups)}")
+            if found[-1] > len(found):
+                detail.append(
+                    f"last prefix {found[-1]:02d} but only "
+                    f"{len(found)} files (expected {len(found):02d})"
+                )
+            result.append(("WARN",
+                           f"references/ prefixes not sequential ({', '.join(detail)}); "
+                           f"found {[f'{p:02d}' for p in found]}, "
+                           f"expected {[f'{e:02d}' for e in expected]}"))
+
+    return result or [("PASS", "reference files follow NN-topic.md naming (or absent)")]
 
 
-def _validate_frontmatter(fm):
-    """Return list of error strings for the full frontmatter."""
-    errors = []
-    name = fm.get('name', '') if fm else ''
-    errors.extend(_validate_name(name))
-    desc = fm.get('description', None) if fm else None
-    errors.extend(_validate_description(desc))
-    compat = fm.get('compatibility') if fm else None
-    if compat is not None:
-        errors.extend(_validate_compatibility(compat))
-    return errors
+def _check_script_permissions(skill_dir, fm_name):
+    """Check that scripts/<name>.sh is executable, if present."""
+    if not fm_name:
+        return []
+    sh_path = os.path.join(skill_dir, 'scripts', f'{fm_name}.sh')
+    if not os.path.isfile(sh_path):
+        return []
+    if os.access(sh_path, os.X_OK):
+        return [("PASS", f"scripts/{fm_name}.sh is executable")]
+    return [("WARN", f"scripts/{fm_name}.sh is not executable (run chmod +x)")]
 
 
-REQUIRED_SECTIONS = {'#'}  # body must start with a level-1 heading
-# Warns when missing — every skill should explain what it does
-RECOMMENDED_SECTIONS = {'## Overview'}
-# Truly optional — no warning when absent
-# (## Usage is for skills with commands/tools; knowledge-only skills don't need it)
-TRULY_OPTIONAL_SECTIONS = {'## Usage', '## Gotchas', '## References'}
+def _check_script_usage_refs(body, fm_name):
+    """Check that the body references '<name>.sh' rather than './<name>.sh'.
 
+    Scans outside fenced code blocks, where './<name>.sh' paths are
+    often structural (directory trees) rather than invocational.
+    """
+    if not fm_name:
+        return [("PASS", "script usage references use '<name>.sh' format")]
+    base_name, _ = _strip_version_suffix(fm_name)
+
+    in_fence = False
+    bad_lines = set()
+    for lineno, line in enumerate(body.splitlines(), 1):
+        stripped = line.strip()
+        if stripped.startswith('```'):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        for candidate in (fm_name, base_name):
+            if f'./{candidate}.sh' in stripped:
+                bad_lines.add(lineno)
+
+    if bad_lines:
+        lines_str = ', '.join(f"line {l}" for l in sorted(bad_lines))
+        return [("WARN",
+                 f"script usage reference(s) use './<name>.sh' instead of "
+                 f"'{fm_name}.sh' ({lines_str})")]
+    return [("PASS", "script usage references use '<name>.sh' format")]
+
+
+# ---------------------------------------------------------------------------
+# Path helpers
+# ---------------------------------------------------------------------------
 
 def _find_skill_md(path):
     """Given a path (file or dir), return the absolute path to SKILL.md."""
@@ -683,256 +611,19 @@ def _find_skill_md(path):
     return None
 
 
-def _check_sections(body):
-    """Check for required and recommended sections in the body.
+def _discover_skill_dirs(collection_dir):
+    """Find all subdirectories in collection_dir that contain a SKILL.md.
 
-    ## Overview warns if missing — every skill should explain what it does.
-    ## Usage, ## Gotchas, and ## References are truly optional — no warning.
-
-    Returns (errors, warnings) lists.
+    Returns a sorted list of absolute paths to the skill directories.
     """
-    errors = []
-    warnings = []
-
-    # Collect headings, skipping fenced code blocks
-    in_fence = False
-    found_headings = set()
-    for line in body.splitlines():
-        stripped = line.strip()
-        if stripped.startswith('```'):
-            in_fence = not in_fence
-            continue
-        if not in_fence and stripped.startswith('#'):
-            found_headings.add(stripped)
-
-    # Check recommended sections — warn if missing
-    missing_recommended = RECOMMENDED_SECTIONS - found_headings
-    if missing_recommended:
-        warnings.append(
-            f"missing recommended section(s): {', '.join(sorted(missing_recommended))}"
-        )
-
-    return errors, warnings
-
-
-def _check_references_section(body):
-    """Check that a ## References section (if present) uses a bulleted list.
-
-    The spec requires bulleted lists like:
-      - [01-topic](references/01-topic.md) — description
-
-    Tables are not allowed in the References section.
-
-    Returns (errors, warnings) lists.
-    """
-    errors = []
-    warnings = []
-
-    # Find ## References heading (outside fenced code blocks)
-    lines = body.splitlines()
-    in_fence = False
-    ref_section_start = None
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped.startswith('```'):
-            in_fence = not in_fence
-            continue
-        if not in_fence and stripped == '## References':
-            ref_section_start = i
-            break
-
-    if ref_section_start is None:
-        # No References section — nothing to check
-        return errors, warnings
-
-    # Collect lines after ## References until next heading or end of body
-    section_lines = []
-    for i in range(ref_section_start + 1, len(lines)):
-        stripped = lines[i].strip()
-        if stripped.startswith('```'):
-            break  # stop at code fences
-        if re.match(r'^#{1,6}\s', stripped) or re.match(r'^#{1,6}$', stripped):
-            break  # stop at next heading
-        section_lines.append(stripped)
-
-    # Filter out blank lines and prose (non-list, non-table lines)
-    content_lines = [l for l in section_lines if l and not l.startswith('|')]
-    table_lines = [l for l in section_lines if l.startswith('|')]
-
-    # Check if there's a bulleted list with reference links — links to local
-    # reference files (references/*.md) or external URLs are both valid
-    bullet_ref_pattern = re.compile(
-        r'^-\s+\[.+\]\((?:references/[^)]+|https?://[^)]+)\)'
-    )
-    has_bullet_refs = any(bullet_ref_pattern.match(l) for l in content_lines)
-
-    # Check if table format is used instead
-    has_table = len(table_lines) > 1  # header + separator + rows = multiple pipe lines
-
-    if has_table and not has_bullet_refs:
-        warnings.append(
-            "## References uses a table format; use a bulleted list instead "
-            "(e.g. '- [01-topic](references/01-topic.md) — description')"
-        )
-    elif has_bullet_refs:
-        pass  # valid bulleted list format
-    else:
-        warnings.append(
-            "## References section does not contain a bulleted list of reference links; "
-            "expected lines like '- [01-topic](references/01-topic.md) — description' "
-            "or '- [Title](https://example.com) — description'"
-        )
-
-    return errors, warnings
-
-
-def _check_reference_files(skill_dir):
-    """Check that files in references/ directory follow NN-topic.md naming.
-
-    Validates:
-      - Each file starts with a numeric prefix (01-, 02-, …)
-      - Prefixes are sequential with no gaps
-      - Files end in .md
-
-    Returns (errors, warnings) lists.
-    """
-    errors = []
-    warnings = []
-
-    ref_dir = os.path.join(skill_dir, 'references')
-    if not os.path.isdir(ref_dir):
-        return errors, warnings
-
-    entries = sorted(os.listdir(ref_dir))
-    # Filter to only files (skip subdirectories)
-    files = [e for e in entries if os.path.isfile(os.path.join(ref_dir, e))]
-
-    if not files:
-        warnings.append("references/ directory is empty")
-        return errors, warnings
-
-    # Pattern: NN-topic.md where NN is 2+ digit number
-    prefix_re = re.compile(r'^(\d{2,})-(.+\.md)$')
-    found_prefixes = []
-    bad_names = []
-
-    for fname in files:
-        m = prefix_re.match(fname)
-        if m:
-            found_prefixes.append(int(m.group(1)))
-        else:
-            bad_names.append(fname)
-
-    if bad_names:
-        warnings.append(
-            f"references/ file(s) missing numeric prefix: "
-            f"{', '.join(bad_names)} (expected NN-topic.md)"
-        )
-
-    # Check sequential ordering (no gaps)
-    found_prefixes.sort()
-    if found_prefixes:
-        expected = list(range(1, len(found_prefixes) + 1))
-        expected_fmt = [f"{e:02d}" for e in expected]
-        actual_fmt = [f"{p:02d}" for p in found_prefixes]
-
-        if found_prefixes != expected:
-            # Build detailed gap info
-            gaps = []
-            duplicates = []
-            seen = set()
-            for p in found_prefixes:
-                if p in seen:
-                    duplicates.append(f"{p:02d}")
-                seen.add(p)
-            missing = [e for e in expected if e not in seen]
-            if missing:
-                gaps.extend([f"{m:02d}" for m in missing])
-
-            detail_parts = []
-            if gaps:
-                detail_parts.append(f"missing gaps: {', '.join(gaps)}")
-            if duplicates:
-                detail_parts.append(f"duplicate prefixes: {', '.join(duplicates)}")
-            if found_prefixes[-1] > len(found_prefixes):
-                detail_parts.append(
-                    f"last prefix {found_prefixes[-1]:02d} but only "
-                    f"{len(found_prefixes)} files (expected {len(found_prefixes):02d})"
-                )
-
-            warnings.append(
-                f"references/ prefixes not sequential ({', '.join(detail_parts)}); "
-                f"found {actual_fmt}, expected {expected_fmt}"
-            )
-        else:
-            pass  # sequential, no warning
-
-    return errors, warnings
-
-
-def _check_script_permissions(skill_dir, fm_name):
-    """Check that scripts/<name>.sh is executable if it exists.
-
-    Returns (errors, warnings) lists.
-    """
-    errors = []
-    warnings = []
-
-    if not fm_name:
-        return errors, warnings
-
-    sh_path = os.path.join(skill_dir, 'scripts', f'{fm_name}.sh')
-    if os.path.isfile(sh_path):
-        if not os.access(sh_path, os.X_OK):
-            warnings.append(
-                f"scripts/{fm_name}.sh is not executable (run chmod +x)"
-            )
-
-    return errors, warnings
-
-
-def _check_script_usage_refs(body, fm_name):
-    """Check that SKILL.md body uses `<name>.sh` instead of `./<name>.sh`
-    for usage/instructional references.
-
-    Scans outside fenced code blocks (``` ... ```) since those often show
-    directory trees where `scripts/` is structural, not invocational.
-
-    Returns (errors, warnings) lists.
-    """
-    errors = []
-    warnings = []
-
-    if not fm_name:
-        return errors, warnings
-
-    # Also check for the dir basename variant (e.g. demo-skill-2-4-1 vs demo-skill)
-    base_name, _ = _strip_version_suffix(fm_name)
-
-    in_fence = False
-    bad_refs = set()  # (lineno, pattern)
-    for lineno, line in enumerate(body.splitlines(), 1):
-        stripped = line.strip()
-        if stripped.startswith('```'):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        # Check for ./<name>.sh patterns (both fm_name and base_name)
-        for candidate in (fm_name, base_name):
-            pattern = f'./{candidate}.sh'
-            if pattern in stripped:
-                bad_refs.add((lineno, pattern))
-
-    if bad_refs:
-        unique_lines = sorted(set(l for l, _ in bad_refs))
-        lines_str = ', '.join(f"line {l}" for l in unique_lines)
-        preferred = f'{fm_name}.sh'
-        warnings.append(
-            f"script usage reference(s) use './<name>.sh' instead of '{preferred}' ({lines_str})"
-        )
-
-    return errors, warnings
+    skills = []
+    if not os.path.isdir(collection_dir):
+        return skills
+    for entry in sorted(os.listdir(collection_dir)):
+        candidate = os.path.join(collection_dir, entry)
+        if os.path.isdir(candidate) and os.path.isfile(os.path.join(candidate, 'SKILL.md')):
+            skills.append(candidate)
+    return skills
 
 
 def _strip_version_suffix(dir_basename):
@@ -944,44 +635,49 @@ def _strip_version_suffix(dir_basename):
     """
     m = VERSION_SUFFIX_RE.search(dir_basename)
     if m:
-        name = dir_basename[:m.start()]
-        return name, m.group(1)
+        return dir_basename[:m.start()], m.group(1)
     return dir_basename, None
 
 
 def _dir_version_to_dots(version_with_hyphens):
-    """Convert hyphen-separated version to dot-separated.
-
-    e.g. '0-11-19' -> '0.11.19'
-    """
+    """Convert hyphen-separated version to dot-separated (e.g. '0-11-19' -> '0.11.19')."""
     return version_with_hyphens.replace('-', '.')
 
 
+def _count_results(results):
+    """Return (error_count, warn_count) for a results list."""
+    errors = sum(1 for label, _ in results if label == "ERROR")
+    warns = sum(1 for label, _ in results if label == "WARN")
+    return errors, warns
+
+
+def _die(msg):
+    """Print *msg* to stderr and exit 1."""
+    print(msg, file=sys.stderr)
+    sys.exit(1)
+
+
 # ---------------------------------------------------------------------------
-# Subcommands
+# create
 # ---------------------------------------------------------------------------
 
 def cmd_create(args):
     """Scaffold a new skill directory."""
     name = args.name.strip()
     description = args.description.strip()
-    output_dir = args.output_dir
-    version = getattr(args, 'version', None)
-    if version:
-        version = version.strip()
-    url = getattr(args, 'url', None)
-    if url:
-        url = url.strip()
+    version = (args.version or '').strip() or None
+    url = (args.url or '').strip() or None
 
-    # Extract name/version from URL if provided
+    # Extract version from URL if provided
     if url:
         try:
-            url_name, url_version = _extract_name_version_preserve_case(url)
+            _, url_version = _extract_name_version(url)
             if url_version and not version:
                 version = url_version
                 print(f"create: extracted version '{version}' from URL")
         except ValueError as e:
-            print(f"create: regex extraction failed ({e}), trying LLM fallback…", file=sys.stderr)
+            print(f"create: regex extraction failed ({e}), trying LLM fallback…",
+                  file=sys.stderr)
             if not version:
                 llm_version = _llm_extract_version(url, name)
                 if llm_version:
@@ -994,7 +690,6 @@ def cmd_create(args):
     errors.extend(_validate_description(description))
     # Keep frontmatter colon-free — colons in text values break YAML parsing
     errors.extend(_validate_text_fields({'description': description}))
-
     if errors:
         print("create: validation failed:", file=sys.stderr)
         for e in errors:
@@ -1003,49 +698,35 @@ def cmd_create(args):
 
     # Build directory name and H1 title
     if version:
-        version_dots = version.replace('-', '.')
-        version_hyphen = version.replace('.', '-')
-        dir_name = f"{name}-{version_hyphen}"
-        h1_title = f"{name} {version_dots}"
+        dir_name = f"{name}-{version.replace('.', '-')}"
+        h1_title = f"{name} {version.replace('-', '.')}"
     else:
         dir_name = name
         h1_title = name
 
-    # Create directory structure
-    skill_dir = os.path.join(output_dir, dir_name)
+    skill_dir = os.path.join(args.output_dir, dir_name)
     os.makedirs(skill_dir, exist_ok=True)
 
     skill_md_path = os.path.join(skill_dir, 'SKILL.md')
     if os.path.exists(skill_md_path):
-        print(f"create: {skill_md_path} already exists — skipping", file=sys.stderr)
-        sys.exit(1)
-
-    # Determine script mode
-    with_scripts = args.with_scripts
-    lang = getattr(args, 'lang', None)
-    shell_mode = lang == 'bash' or getattr(args, 'shell', False)
+        _die(f"create: {skill_md_path} already exists — skipping")
 
     # Build SKILL.md content: frontmatter (via PyYAML) + body
-    fm_data = {'name': dir_name, 'description': description}
-    frontmatter = _build_frontmatter_yaml(fm_data)
-
-    if with_scripts and shell_mode:
-        body = BODY_TEMPLATE_WITH_SHELL_SCRIPT.format(
-            title=h1_title, script_name=name,
-        )
-    elif with_scripts:
-        body = BODY_TEMPLATE_WITH_PYTHON_SCRIPT.format(
-            title=h1_title, script_name=name,
-        )
+    shell_mode = args.lang == 'bash' or args.shell
+    if args.with_scripts and shell_mode:
+        body = BODY_TEMPLATE_WITH_SHELL_SCRIPT.format(title=h1_title, script_name=name)
+    elif args.with_scripts:
+        body = BODY_TEMPLATE_WITH_PYTHON_SCRIPT.format(title=h1_title, script_name=name)
     else:
         body = BODY_TEMPLATE.format(title=h1_title)
 
+    frontmatter = _build_frontmatter_yaml({'name': dir_name, 'description': description})
     with open(skill_md_path, 'w') as f:
         f.write(frontmatter)
         f.write(body)
 
     # Create scripts
-    if with_scripts:
+    if args.with_scripts:
         scripts_dir = os.path.join(skill_dir, 'scripts')
         os.makedirs(scripts_dir, exist_ok=True)
 
@@ -1139,48 +820,15 @@ def cmd_create(args):
     print(f"create: scaffolded skill '{dir_name}' at {skill_md_path}")
 
 
-def _discover_skill_dirs(collection_dir):
-    """Find all subdirectories in collection_dir that contain a SKILL.md.
+# ---------------------------------------------------------------------------
+# validate
+# ---------------------------------------------------------------------------
 
-    Returns a sorted list of absolute paths to the skill directories.
-    """
-    skills = []
-    if not os.path.isdir(collection_dir):
-        return skills
-    for entry in sorted(os.listdir(collection_dir)):
-        candidate = os.path.join(collection_dir, entry)
-        if not os.path.isdir(candidate):
-            continue
-        skill_md = os.path.join(candidate, 'SKILL.md')
-        if os.path.isfile(skill_md):
-            skills.append(candidate)
-    return skills
-
-
-def _is_collection_dir(path):
-    """Check if path is a collection directory (contains subdirs with SKILL.md).
-
-    Returns True if the path is a directory containing at least one subdirectory
-    with a SKILL.md, and does NOT itself have a SKILL.md at its root.
-    """
-    abs_path = os.path.abspath(path)
-    if not os.path.isdir(abs_path):
-        return False
-    # If this dir itself has SKILL.md, it's a single skill, not a collection
-    if os.path.isfile(os.path.join(abs_path, 'SKILL.md')):
-        return False
-    # Check if any subdirectory has SKILL.md
-    return len(_discover_skill_dirs(abs_path)) > 0
-
-
-def _validate_single_skill(skill_path, strict):
-    """Validate a single skill. Returns (results, error_count, warn_count).
-
-    results: list of (label, message) where label in {"PASS", "WARN", "ERROR"}
-    """
+def _validate_single_skill(skill_path):
+    """Validate one skill. Returns a list of (label, message) tuples."""
     skill_md = _find_skill_md(skill_path)
     if skill_md is None:
-        return [], 1, 0  # Can't find SKILL.md — treated as 1 error
+        return [("ERROR", "no SKILL.md found")]
 
     with open(skill_md, 'r') as f:
         content = f.read()
@@ -1188,38 +836,36 @@ def _validate_single_skill(skill_path, strict):
     fm, body, yaml_error = _parse_frontmatter(content)
 
     results = []
-
     skill_dir = os.path.dirname(skill_md)
     dir_basename = os.path.basename(skill_dir)
     dir_name, dir_version = _strip_version_suffix(dir_basename)
 
-    # --- Frontmatter presence / validity ---
-    if fm is None and yaml_error is None:
-        results.append(("ERROR", "no YAML frontmatter found (must start with ---)"))
-    elif fm is None:
-        results.append(("ERROR", f"frontmatter is not valid YAML — {yaml_error}"))
+    # --- Frontmatter ---
+    if fm is None:
+        if yaml_error is not None:
+            results.append(("ERROR", f"frontmatter is not valid YAML — {yaml_error}"))
+        else:
+            results.append(("ERROR", "no YAML frontmatter found (must start with ---)"))
     else:
         results.append(("PASS", "frontmatter is valid YAML"))
 
         # Name
         name_errors = _validate_name(fm.get('name', ''))
         if name_errors:
-            for e in name_errors:
-                results.append(("ERROR", f"name: {e}"))
+            results.extend(("ERROR", f"name: {e}") for e in name_errors)
         else:
             results.append(("PASS", f"name '{fm.get('name', '')}' is valid"))
 
         # Description
-        desc_errors = _validate_description(fm.get('description', None))
+        desc_errors = _validate_description(fm.get('description'))
         if desc_errors:
-            for e in desc_errors:
-                results.append(("ERROR", f"description: {e}"))
+            results.extend(("ERROR", f"description: {e}") for e in desc_errors)
         else:
             results.append(("PASS", "description is valid"))
 
         # Unknown fields
         known_fields = {'name', 'description', 'license', 'compatibility', 'metadata'}
-        unknown = set(fm.keys()) - known_fields
+        unknown = set(fm) - known_fields
         if unknown:
             results.append(("WARN", f"unknown frontmatter fields: {', '.join(sorted(unknown))}"))
         else:
@@ -1228,153 +874,92 @@ def _validate_single_skill(skill_path, strict):
         # Text-only fields must not contain ':'
         text_errors = _validate_text_fields(fm)
         if text_errors:
-            for e in text_errors:
-                results.append(("ERROR", e))
+            results.extend(("ERROR", e) for e in text_errors)
         else:
             results.append(("PASS", "text-only fields contain no ':' characters"))
 
         # Duplicate top-level keys
-        fm_match = FRONTMATTER_RE.match(content)
-        dup_errors = _check_duplicate_frontmatter_keys(
-            fm_match.group('content') if fm_match else ''
-        )
+        dup_errors = _check_duplicate_frontmatter_keys(content)
         if dup_errors:
-            for e in dup_errors:
-                results.append(("ERROR", e))
+            results.extend(("ERROR", e) for e in dup_errors)
         else:
             results.append(("PASS", "no duplicate frontmatter keys"))
 
-        # Compatibility validation
+        # Compatibility (optional)
         compat = fm.get('compatibility')
         if compat is not None:
             compat_errors = _validate_compatibility(compat)
-            for e in compat_errors:
-                results.append(("ERROR", f"compatibility: {e}"))
-            if not compat_errors:
+            if compat_errors:
+                results.extend(("ERROR", f"compatibility: {e}") for e in compat_errors)
+            else:
                 results.append(("PASS", "compatibility is valid"))
 
-        # Metadata validation (optional)
+        # Metadata (optional)
         metadata = fm.get('metadata')
         if metadata is not None:
             meta_warnings = _validate_metadata(metadata)
-            for w in meta_warnings:
-                results.append(("WARN", f"metadata: {w}"))
-            if not meta_warnings:
+            if meta_warnings:
+                results.extend(("WARN", f"metadata: {w}") for w in meta_warnings)
+            else:
                 results.append(("PASS", "metadata structure is valid"))
 
         # Name vs directory basename consistency
         fm_name = fm.get('name', '')
-        name_matches = (fm_name == dir_basename)
-        if fm_name and not name_matches:
-            results.append(
-                ("WARN",
-                 f"directory name '{dir_basename}' does not match "
-                 f"frontmatter name '{fm_name}' (expected '{dir_basename}')")
-            )
+        if fm_name and fm_name != dir_basename:
+            results.append((
+                "WARN",
+                f"directory name '{dir_basename}' does not match "
+                f"frontmatter name '{fm_name}' (expected '{dir_basename}')"
+            ))
         else:
             results.append(("PASS", f"directory name matches frontmatter name '{fm_name}'"))
 
-        # Script permission checks
-        perm_errors, perm_warnings = _check_script_permissions(skill_dir, fm_name)
-        for e in perm_errors:
-            results.append(("ERROR", e))
-        for w in perm_warnings:
-            results.append(("WARN", w))
-        if not perm_errors and not perm_warnings:
-            sh_path = os.path.join(skill_dir, 'scripts', f'{fm_name}.sh')
-            if os.path.isfile(sh_path):
-                results.append(("PASS", f"scripts/{fm_name}.sh is executable"))
+        # Script checks
+        results.extend(_check_script_permissions(skill_dir, fm_name))
+        results.extend(_check_script_usage_refs(body, fm_name))
 
-        # Script usage reference style check (outside fenced code blocks)
-        ref_errors, ref_warnings = _check_script_usage_refs(body, fm_name)
-        for e in ref_errors:
-            results.append(("ERROR", e))
-        for w in ref_warnings:
-            results.append(("WARN", w))
-        if not ref_errors and not ref_warnings:
-            results.append(("PASS", "script usage references use '<name>.sh' format"))
-
-    # --- Body checks ---
-    body_lines = body.splitlines()
-
-    # Level-1 heading
-    first_content_line = None
-    for line in body_lines:
-        stripped = line.strip()
-        if stripped:
-            first_content_line = stripped
-            break
+    # --- Body ---
+    first_content_line = next(
+        (line.strip() for line in body.splitlines() if line.strip()), None
+    )
     if first_content_line is None:
         results.append(("PASS", "body is empty (no content lines)"))
     elif not first_content_line.startswith('# '):
-        results.append(
-            ("ERROR",
-             f"body must start with a level-1 heading (found: '{first_content_line[:60]}...')")
-        )
+        results.append((
+            "ERROR",
+            f"body must start with a level-1 heading (found: '{first_content_line[:60]}...')"
+        ))
     else:
-        h1_text = first_content_line[2:]  # strip '# '
         expected_h1 = dir_name
         if dir_version:
             expected_h1 = f"{dir_name} {_dir_version_to_dots(dir_version)}"
-        if h1_text == expected_h1:
+        if first_content_line[2:] == expected_h1:
             results.append(("PASS", f"H1 heading '{first_content_line}' matches expected format"))
         else:
-            results.append(
-                ("ERROR",
-                 f"H1 heading '{first_content_line}' does not match expected "
-                 f"'#{expected_h1}' (must be '# <name>' or '# <name> <version>')")
-            )
+            results.append((
+                "ERROR",
+                f"H1 heading '{first_content_line}' does not match expected "
+                f"'#{expected_h1}' (must be '# <name>' or '# <name> <version>')"
+            ))
 
     # Token estimation
     estimated_tokens = _estimate_tokens(body)
     if estimated_tokens > 5000:
-        results.append(
-            ("WARN", f"body is ~{estimated_tokens} tokens (recommended: under 5000)")
-        )
+        results.append(("WARN", f"body is ~{estimated_tokens} tokens (recommended: under 5000)"))
     else:
         results.append(("PASS", f"body is ~{estimated_tokens} tokens (under 5000)"))
 
-    # Section checks
-    sec_errors, sec_warnings = _check_sections(body)
-    for e in sec_errors:
-        results.append(("ERROR", e))
-    for w in sec_warnings:
-        results.append(("WARN", w))
-    if not sec_errors and not sec_warnings:
-        results.append(("PASS", "all recommended sections present"))
+    # Sections, references, reference files
+    results.extend(_check_sections(body))
+    results.extend(_check_references_section(body))
+    results.extend(_check_reference_files(skill_dir))
 
-    # References section format check (only when ## References exists)
-    ref_errors, ref_warnings = _check_references_section(body)
-    for e in ref_errors:
-        results.append(("ERROR", e))
-    for w in ref_warnings:
-        results.append(("WARN", w))
-    if not ref_errors and not ref_warnings:
-        results.append(("PASS", "references section format is correct (or absent)"))
-
-    # Reference files naming check (references/ directory on disk)
-    rf_errors, rf_warnings = _check_reference_files(skill_dir)
-    for e in rf_errors:
-        results.append(("ERROR", e))
-    for w in rf_warnings:
-        results.append(("WARN", w))
-    if not rf_errors and not rf_warnings:
-        results.append(("PASS", "reference files follow NN-topic.md naming (or absent)"))
-
-    error_count = sum(1 for label, _ in results if label == "ERROR")
-    warn_count = sum(1 for label, _ in results if label == "WARN")
-
-    return results, error_count, warn_count
+    return results
 
 
 def _print_single_results(results, strict):
-    """Print enumerated results for a single skill."""
-    error_count = sum(1 for label, _ in results if label == "ERROR")
-    warn_count = sum(1 for label, _ in results if label == "WARN")
-
-    passed = error_count == 0
-    if strict and warn_count > 0:
-        passed = False
+    """Print enumerated results; return the exit code."""
+    error_count, warn_count = _count_results(results)
 
     if error_count:
         print("validate: FAILED")
@@ -1383,69 +968,16 @@ def _print_single_results(results, strict):
     else:
         print("validate: OK")
 
-    passes = [(i, msg) for i, (label, msg) in enumerate(results, 1) if label == "PASS"]
-    warns = [(i, msg) for i, (label, msg) in enumerate(results, 1) if label == "WARN"]
-    errors_list = [(i, msg) for i, (label, msg) in enumerate(results, 1) if label == "ERROR"]
-
     counter = 0
-    for _, msg in passes:
-        counter += 1
-        print(f"  {counter}. [PASS] {msg}")
-    for _, msg in warns:
-        counter += 1
-        print(f"  {counter}. [WARN] {msg}")
-    for _, msg in errors_list:
-        counter += 1
-        print(f"  {counter}. [ERROR] {msg}")
+    for label in ("PASS", "WARN", "ERROR"):
+        for rlabel, msg in results:
+            if rlabel != label:
+                continue
+            counter += 1
+            print(f"  {counter}. [{label}] {msg}")
 
+    passed = error_count == 0 and (warn_count == 0 or not strict)
     return 0 if passed else 1
-
-
-def cmd_validate(args):
-    """Validate a SKILL.md file or a collection of skills against spec rules.
-
-    Supports three modes:
-      1. Single skill (path to skill dir or SKILL.md file)
-      2. Collection directory (path to dir containing skill subdirs)
-      3. Explicit collection with --all flag on a dir
-    """
-    target = args.path
-    strict = args.strict
-
-    # Resolve path
-    abs_target = os.path.abspath(target)
-
-    # Determine mode: single skill vs collection
-    if os.path.isfile(abs_target):
-        # Direct file path — single skill mode
-        skill_md = _find_skill_md(abs_target)
-        if skill_md is None:
-            print(f"validate: no SKILL.md found at '{target}'", file=sys.stderr)
-            sys.exit(1)
-        results, error_count, warn_count = _validate_single_skill(abs_target, strict)
-        sys.exit(_print_single_results(results, strict))
-
-    elif os.path.isdir(abs_target):
-        # Could be single skill dir or collection dir
-        skill_md = _find_skill_md(abs_target)
-        if skill_md is not None:
-            # This dir has SKILL.md — single skill mode
-            results, error_count, warn_count = _validate_single_skill(abs_target, strict)
-            sys.exit(_print_single_results(results, strict))
-
-        # No SKILL.md at root — check if it's a collection
-        skill_dirs = _discover_skill_dirs(abs_target)
-        if not skill_dirs:
-            print(f"validate: no SKILL.md found at '{target}' "
-                  f"(not a skill dir or collection)", file=sys.stderr)
-            sys.exit(1)
-
-        # Collection mode — validate all skills
-        _validate_collection(skill_dirs, strict)
-
-    else:
-        print(f"validate: path not found '{target}'", file=sys.stderr)
-        sys.exit(1)
 
 
 def _validate_collection(skill_dirs, strict):
@@ -1454,41 +986,34 @@ def _validate_collection(skill_dirs, strict):
     Prints per-skill results and a summary. Exits 0 if all pass, 1 otherwise.
     """
     total = len(skill_dirs)
-    passed_count = 0
-    failed_count = 0
-    warned_count = 0
-    total_errors = 0
-    total_warnings = 0
+    passed_count = failed_count = warned_count = 0
+    total_errors = total_warnings = 0
 
     for i, skill_dir in enumerate(skill_dirs, 1):
-        skill_name = os.path.basename(skill_dir)
         print(f"{'=' * 60}")
-        print(f"  {i}/{total}: {skill_name}")
+        print(f"  {i}/{total}: {os.path.basename(skill_dir)}")
         print(f"{'=' * 60}")
 
-        results, error_count, warn_count = _validate_single_skill(skill_dir, strict)
+        results = _validate_single_skill(skill_dir)
+        error_count, warn_count = _count_results(results)
+        skill_passed = error_count == 0 and (warn_count == 0 or not strict)
 
-        # Determine status for this skill
-        skill_passed = error_count == 0
-        if strict and warn_count > 0:
-            skill_passed = False
-
-        if skill_passed and warn_count > 0:
-            status = "OK (with warnings)"
-            warned_count += 1
-        elif skill_passed:
-            status = "OK"
-            passed_count += 1
-        else:
+        if not skill_passed:
             status = "FAILED"
             failed_count += 1
+        elif warn_count:
+            status = "OK (with warnings)"
+            warned_count += 1
+        else:
+            status = "OK"
+            passed_count += 1
 
         total_errors += error_count
         total_warnings += warn_count
 
         print(f"  Status: {status} ({error_count} error(s), {warn_count} warning(s))")
         _print_single_results(results, strict)
-        print()  # blank line between skills
+        print()
 
     # Summary
     print(f"{'=' * 60}")
@@ -1500,14 +1025,44 @@ def _validate_collection(skill_dirs, strict):
     sys.exit(0 if failed_count == 0 else 1)
 
 
+def cmd_validate(args):
+    """Validate a SKILL.md file or a collection of skills against spec rules.
+
+    Modes: single skill (path to skill dir or SKILL.md file), collection
+    directory (dir containing skill subdirs), or auto-detect — a directory
+    without SKILL.md at the root but with skill subdirs validates all of them.
+    """
+    target = os.path.abspath(args.path)
+
+    if os.path.isfile(target):
+        if _find_skill_md(target) is None:
+            _die(f"validate: no SKILL.md found at '{args.path}'")
+        sys.exit(_print_single_results(_validate_single_skill(target), args.strict))
+
+    if os.path.isdir(target):
+        if _find_skill_md(target) is not None:
+            # This dir has SKILL.md — single skill mode
+            sys.exit(_print_single_results(_validate_single_skill(target), args.strict))
+
+        skill_dirs = _discover_skill_dirs(target)
+        if not skill_dirs:
+            _die(f"validate: no SKILL.md found at '{args.path}' "
+                 f"(not a skill dir or collection)")
+        _validate_collection(skill_dirs, args.strict)
+        return
+
+    _die(f"validate: path not found '{args.path}'")
+
+
+# ---------------------------------------------------------------------------
+# info
+# ---------------------------------------------------------------------------
+
 def cmd_info(args):
     """Print parsed frontmatter and structural summary of a skill."""
-    target = args.path
-    skill_md = _find_skill_md(target)
-
+    skill_md = _find_skill_md(args.path)
     if skill_md is None:
-        print(f"info: no SKILL.md found at '{target}'", file=sys.stderr)
-        sys.exit(1)
+        _die(f"info: no SKILL.md found at '{args.path}'")
 
     with open(skill_md, 'r') as f:
         content = f.read()
@@ -1515,23 +1070,15 @@ def cmd_info(args):
     fm, body, yaml_error = _parse_frontmatter(content)
 
     if yaml_error is not None:
-        print(f"info: {skill_md}: invalid YAML frontmatter — {yaml_error}",
-              file=sys.stderr)
-        sys.exit(1)
+        _die(f"info: {skill_md}: invalid YAML frontmatter — {yaml_error}")
 
-    # Structured output modes
-    if getattr(args, 'json', False):
-        if fm:
-            print(json.dumps(fm, indent=2, ensure_ascii=False))
-        else:
-            print("{}")
+    if args.json:
+        print(json.dumps(fm, indent=2, ensure_ascii=False) if fm else "{}")
         return
 
-    if getattr(args, 'yaml_out', False):
-        if yaml is not None and fm:
+    if args.yaml_out:
+        if fm:
             print(yaml.dump(fm, default_flow_style=False, sort_keys=False, allow_unicode=True))
-        elif fm:
-            print(_build_frontmatter_yaml(fm).strip())
         else:
             print("{}")
         return
@@ -1554,29 +1101,19 @@ def cmd_info(args):
             if val is not None:
                 print(f"  {key}: {val}")
         known_fields = {'name', 'description', 'license', 'compatibility', 'metadata'}
-        extra = set(fm.keys()) - known_fields
-        for key in sorted(extra):
+        for key in sorted(set(fm) - known_fields):
             print(f"  {key}: {fm[key]}")
     else:
         print("  (no frontmatter)")
 
-    body_lines = body.splitlines()
-    headings = []
-    in_fence = False
-    for line in body_lines:
-        stripped = line.strip()
-        if stripped.startswith('```'):
-            in_fence = not in_fence
-            continue
-        if not in_fence and stripped.startswith('#'):
-            headings.append(stripped)
-    line_count = len(body_lines)
+    line_count = len(body.splitlines())
     word_count = len(body.split())
     token_count = _estimate_tokens(body)
 
     print(f"  body lines: {line_count}")
     print(f"  body words: {word_count}")
     print(f"  body tokens: ~{token_count}")
+    headings = list(_iter_headings(body))
     if headings:
         print("  headings:")
         for h in headings:
@@ -1594,149 +1131,42 @@ def cmd_info(args):
             if os.path.isdir(full):
                 print(f"    {entry}/")
             else:
-                size = os.path.getsize(full)
-                print(f"    {entry} ({size} bytes)")
+                print(f"    {entry} ({os.path.getsize(full)} bytes)")
 
 
 # ---------------------------------------------------------------------------
-# search subcommand
-# ---------------------------------------------------------------------------
-
-def cmd_search(args):
-    """Search skills by querying frontmatter with a jq-style expression.
-
-    Discovers all SKILL.md files in the target directory, extracts frontmatter,
-    and runs the user's jq expression via `yq` against each. Skills where the
-    expression produces non-empty output are returned.
-
-    Examples:
-        skman.py search '.description | test("pdf"; "i")'
-        skman.py search '.metadata.tags | index("python")'
-        skman.py search '.license == "MIT"'
-        skman.py search --skills-dir .agents/skills '.name'
-        skman.py search --json '.name, .description'
-    """
-    skills_dir = args.skills_dir
-    jq_expr = args.expr
-    json_out = getattr(args, 'json', False)
-
-    # Discover SKILL.md files
-    skill_dirs = _discover_skill_dirs(skills_dir)
-    if not skill_dirs:
-        print(f"search: no skills found in '{skills_dir}'", file=sys.stderr)
-        sys.exit(1)
-
-    # Check if yq is available
-    yq_path = shutil.which('yq')
-    if not yq_path:
-        print("search: yq not found on PATH. Run skman.py via its PEP 723 shebang (./skman.py) so uv auto-installs it, or install yq and jq manually.", file=sys.stderr)
-        sys.exit(1)
-
-    results = []
-
-    for skill_dir in skill_dirs:
-        skill_md = os.path.join(skill_dir, 'SKILL.md')
-        with open(skill_md, 'r') as f:
-            content = f.read()
-
-        fm, body, yaml_error = _parse_frontmatter(content)
-        if fm is None:
-            if yaml_error is not None:
-                print(f"search: skipping {skill_md} "
-                      f"(invalid YAML — {yaml_error})", file=sys.stderr)
-            continue
-
-        # Serialize frontmatter as YAML for yq
-        if yaml is not None:
-            fm_yaml = yaml.dump(
-                fm, default_flow_style=False, sort_keys=False,
-                allow_unicode=True, width=1000,
-            )
-        else:
-            # Fallback: build minimal YAML manually
-            fm_yaml = _build_frontmatter_yaml(fm).strip('---\n') + '\n'
-
-        # Run yq with the user's jq expression
-        try:
-            proc = subprocess.run(
-                ['yq', jq_expr],
-                input=fm_yaml,
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            output = proc.stdout.strip()
-            if output and output != 'null' and output != 'false':
-                dir_basename = os.path.basename(skill_dir)
-                results.append({
-                    'skill': dir_basename,
-                    'path': skill_md,
-                    'output': output,
-                    'frontmatter': fm,
-                })
-        except subprocess.TimeoutExpired:
-            print(f"search: yq timed out on {skill_md}", file=sys.stderr)
-        except Exception as e:
-            print(f"search: error querying {skill_md}: {e}", file=sys.stderr)
-
-    # Output results
-    if json_out:
-        print(json.dumps(results, indent=2, ensure_ascii=False))
-    elif results:
-        for r in results:
-            print(f"{r['skill']}:")
-            # Format output nicely
-            for line in r['output'].split('\n'):
-                print(f"  {line}")
-            print()
-    else:
-        print(f"search: no matches for expression '{jq_expr}'")
-
-
-# ---------------------------------------------------------------------------
-# generate subcommand
+# generate
 # ---------------------------------------------------------------------------
 
 AUTOGEN_MARKER = "<!-- IMPORTANT: never change after this point because it is automatically generated -->"
 
 
 def _discover_skills(skills_dir):
-    """Scan skills_dir for directories containing SKILL.md.
-
-    Returns a sorted list of (name, description) tuples.
-    name = directory basename, description = frontmatter 'description' field.
+    """Return a sorted list of (name, description) for all skills in
+    skills_dir. name defaults to the directory basename, description to
+    the frontmatter 'description' field.
     """
     skills = []
-    if not os.path.isdir(skills_dir):
-        return skills
-
-    for entry in sorted(os.listdir(skills_dir)):
-        skill_md = os.path.join(skills_dir, entry, 'SKILL.md')
-        if not os.path.isfile(skill_md):
-            continue
+    for skill_dir in _discover_skill_dirs(skills_dir):
+        skill_md = os.path.join(skill_dir, 'SKILL.md')
         with open(skill_md, 'r') as f:
             content = f.read()
         fm, _, yaml_error = _parse_frontmatter(content)
         if fm is None and yaml_error is not None:
             print(f"generate: warning: invalid YAML frontmatter in {skill_md} — "
                   f"{yaml_error} (using directory name)", file=sys.stderr)
-        name = entry
+        name = os.path.basename(skill_dir)
         desc = ''
         if fm:
-            name = fm.get('name', entry)
+            name = fm.get('name', name)
             desc = fm.get('description', '') or ''
         skills.append((name, desc))
-
     return skills
 
 
 def _build_table(skills):
     """Build the Skills Table markdown from a list of (name, description)."""
-    lines = []
-    lines.append("## Skills Table")
-    lines.append("")
-    lines.append("| No | Skill | Description |")
-    lines.append("|----|-------|-------------|")
+    lines = ["## Skills Table", "", "| No | Skill | Description |", "|----|-------|-------------|"]
     for i, (name, desc) in enumerate(skills, 1):
         lines.append(f"| {i} | {name} | {desc} |")
     return "\n".join(lines)
@@ -1744,52 +1174,28 @@ def _build_table(skills):
 
 def _build_statistics(total):
     """Build the Statistics section markdown."""
-    lines = []
-    lines.append("")
-    lines.append("## Statistics")
-    lines.append("")
-    lines.append(f"- **Total Skills**: {total}")
-    return "\n".join(lines)
+    return f"\n## Statistics\n\n- **Total Skills**: {total}"
 
 
 def cmd_generate(args):
     """Generate the Skills Table and Statistics in README.md."""
-    skills_dir = args.skills_dir
-    readme_path = args.readme
+    skills = _discover_skills(args.skills_dir)
+    if not skills:
+        _die(f"generate: no skills found in '{args.skills_dir}'")
 
-    # Discover all skills
-    skills = _discover_skills(skills_dir)
-    total = len(skills)
+    section = f"{AUTOGEN_MARKER}\n{_build_table(skills)}\n{_build_statistics(len(skills))}\n"
 
-    if total == 0:
-        print(f"generate: no skills found in '{skills_dir}'", file=sys.stderr)
-        sys.exit(1)
-
-    # Build replacement section
-    table = _build_table(skills)
-    stats = _build_statistics(total)
-    new_section = f"{AUTOGEN_MARKER}\n{table}\n{stats}\n"
-
-    # Read README
-    if not os.path.isfile(readme_path):
-        print(f"generate: README not found at '{readme_path}'", file=sys.stderr)
-        sys.exit(1)
-
-    with open(readme_path, 'r') as f:
+    if not os.path.isfile(args.readme):
+        _die(f"generate: README not found at '{args.readme}'")
+    with open(args.readme, 'r') as f:
         readme = f.read()
-
-    # Replace everything from marker to end of file
     idx = readme.find(AUTOGEN_MARKER)
     if idx == -1:
-        print(f"generate: auto-generated marker not found in '{readme_path}'", file=sys.stderr)
-        sys.exit(1)
+        _die(f"generate: auto-generated marker not found in '{args.readme}'")
 
-    new_readme = readme[:idx] + new_section
-
-    with open(readme_path, 'w') as f:
-        f.write(new_readme)
-
-    print(f"generate: updated {readme_path} with {total} skills")
+    with open(args.readme, 'w') as f:
+        f.write(readme[:idx] + section)
+    print(f"generate: updated {args.readme} with {len(skills)} skills")
 
 
 # ---------------------------------------------------------------------------
@@ -1800,13 +1206,12 @@ def build_parser():
     parser = argparse.ArgumentParser(
         prog='skman',
         description=textwrap.dedent("""\
-            Skill Manager — scaffold, validate, search, and inspect agent skills.
+            Skill Manager — scaffold, validate, and inspect agent skills.
 
             Subcommands:
               create      Scaffold a new skill directory with SKILL.md
               validate    Check SKILL.md against spec rules
               info        Print frontmatter and structural summary
-              search      Query skills by frontmatter using jq expressions
               generate    Generate Skills Table and Statistics in README.md
 
             Use '<subcommand> --help' for details on each subcommand.
@@ -1937,35 +1342,6 @@ def build_parser():
     p_info.add_argument('--json', action='store_true', help='Output frontmatter as JSON')
     p_info.add_argument('--yaml', dest='yaml_out', action='store_true', help='Output frontmatter as YAML')
 
-    # --- search ---
-    p_search = sub.add_parser(
-        'search',
-        description=textwrap.dedent("""\
-            Search skills by querying frontmatter with a jq-style expression.
-
-            Discovers all SKILL.md files in the target directory, extracts
-            frontmatter, and runs the jq expression via `yq` against each.
-            Skills where the expression produces non-empty output are returned.
-
-            Requires: yq (auto-installed by uv from the PEP 723 header) and jq on PATH.
-
-            Examples:
-              skman.py search '.description | test("pdf"; "i")'
-              skman.py search '.metadata.tags | index("python")'
-              skman.py search '.license == "MIT"'
-              skman.py search --skills-dir .agents/skills '.name'
-              skman.py search --json '.name, .description'
-        """),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    p_search.add_argument('expr', help='jq expression to evaluate against frontmatter')
-    p_search.add_argument(
-        '--skills-dir',
-        default='.agents/skills',
-        help='Directory containing skill subdirectories (default: .agents/skills)',
-    )
-    p_search.add_argument('--json', action='store_true', help='Output results as JSON')
-
     # --- generate ---
     p_generate = sub.add_parser(
         'generate',
@@ -2012,7 +1388,6 @@ def main():
         'create': cmd_create,
         'validate': cmd_validate,
         'info': cmd_info,
-        'search': cmd_search,
         'generate': cmd_generate,
     }
     dispatch[args.subcommand](args)
