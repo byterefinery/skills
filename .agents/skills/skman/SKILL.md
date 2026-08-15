@@ -2,7 +2,7 @@
 name: skman
 description: Introduces the Agent Skills System — a standardized, lightweight, open format for extending AI agent capabilities with specialized knowledge and workflows. Use for scaffolding, validating, searching, and inspecting agent skills (SKILL.md files and other skill's files and directories).
 license: Apache-2.0
-compatibility: Requires Python 3.10+ and uv on PATH. Uses PyYAML and yq (pip install yq) for frontmatter parsing and search.
+compatibility: Requires uv and jq on PATH. PyYAML and yq are declared in the PEP 723 header and auto-resolved by uv — no pip, no local venv.
 metadata:
   tags:
     - meta
@@ -70,7 +70,7 @@ skman.py validate ./skills-python
 
 ### Search
 
-Query skills by frontmatter using jq-style expressions. Requires `yq` installed (`pip install yq`).
+Query skills by frontmatter using jq-style expressions. `yq` is auto-installed by `uv` from the PEP 723 header; `jq` must be on PATH.
 
 ```bash
 # Search by description (case-insensitive)
@@ -276,7 +276,7 @@ Guidelines:
 - **No `:` in text-only frontmatter fields** — `description: Use when: X` is invalid YAML (mapping values are not allowed in this context), and even `foo:bar` confuses naive frontmatter parsers. Keep every top-level scalar string field (`name`, `description`, `license`, `compatibility`) free of colons; rephrase or use `;`. The validator errors on any `:` in these fields, and `create` rejects colon descriptions before scaffolding anything.
 - **Frontmatter `name` must match the directory basename exactly** — e.g., `demo-skill-2-4-1/` requires `name: demo-skill-2-4-1`, `skman/` requires `name: skman`. The validator warns on mismatch. Fix by renaming the directory or correcting the frontmatter.
 - **H1 heading must match `# <name>` or `# <base> <version>`** — the validator errors if the first heading doesn't match. For `skman/` it must be `# skman`; for `demo-skill-2-4-1/` it must be `# demo-skill 2.4.1` (version uses dots, not hyphens). The version in the H1 must correspond to the hyphenated version suffix in the directory/frontmatter name.
-- **`search` requires `yq` on PATH** — install via `pip install yq` (also needs `jq`). Without it, `skman.py search` exits with an error.
+- **`search` needs `yq` and `jq`** — run `skman.py search` via the PEP 723 shebang and `uv` auto-installs `yq` into an ephemeral environment; only the system `jq` binary must be on PATH. Without `jq`, `skman.py search` exits with an error.
 - **Reference files are loaded on demand, not into context** — keep SKILL.md self-contained for core instructions; move deep-dive content to `references/NN-topic.md` and link from the body.
 - **PEP 723 block is mandatory for Python scripts** — every Python script must include the `# /// script ... # ///` metadata block. `uv run` depends on it to resolve dependencies. The block goes at the top of the file, after the shebang. Without it, `uv run script.py` runs with no dependency management.
 - **Clone repos locally before studying them** — when a URL is given as source material to study or analyze for writing a skill, check whether it points to a code repository (GitHub, GitLab, Bitbucket, etc.). If so, clone it into a temporary directory first and read files from the local copy. Fetching individual files over the network is expensive in both time and rate limits; a single `git clone` gives you the full tree instantly. Clean up the temp directory after analysis.

@@ -25,10 +25,7 @@ import sys
 import textwrap
 import unicodedata
 
-try:
-    import yaml
-except ImportError:
-    yaml = None  # will error at runtime if missing
+import yaml
 
 
 # ---------------------------------------------------------------------------
@@ -1632,7 +1629,7 @@ def cmd_search(args):
     # Check if yq is available
     yq_path = shutil.which('yq')
     if not yq_path:
-        print("search: yq not found on PATH. Install via: pip install yq", file=sys.stderr)
+        print("search: yq not found on PATH. Run skman.py via its PEP 723 shebang (./skman.py) so uv auto-installs it, or install yq and jq manually.", file=sys.stderr)
         sys.exit(1)
 
     results = []
@@ -1950,7 +1947,7 @@ def build_parser():
             frontmatter, and runs the jq expression via `yq` against each.
             Skills where the expression produces non-empty output are returned.
 
-            Requires: yq (pip install yq) and jq on PATH.
+            Requires: yq (auto-installed by uv from the PEP 723 header) and jq on PATH.
 
             Examples:
               skman.py search '.description | test("pdf"; "i")'
