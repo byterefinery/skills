@@ -1150,7 +1150,64 @@ def cmd_info(args):
 # generate
 # ---------------------------------------------------------------------------
 
-AUTOGEN_MARKER = "<!-- IMPORTANT: never change after this point because it is automatically generated -->"
+# Per-block HTML comment markers. Each category table and the statistics
+# section live between their own open/close pair, so generate can update
+# (or create) one block without touching the others:
+#   <!-- SKMAN:TABLE:<label> --> ... <!-- /SKMAN:TABLE:<label> -->
+#   <!-- SKMAN:STATS -->          ... <!-- /SKMAN:STATS -->
+_SKMAN_OPEN_TABLE_RE = re.compile(r'^<!-- SKMAN:TABLE:([^ ]+) -->$')
+_SKMAN_CLOSE_TABLE_RE = re.compile(r'^<!-- /SKMAN:TABLE:([^ ]+) -->$')
+_SKMAN_OPEN_STATS_RE = re.compile(r'^<!-- SKMAN:STATS -->$')
+_SKMAN_CLOSE_STATS_RE = re.compile(r'^<!-- /SKMAN:STATS -->$')
+
+# Display names for known category labels; unknown labels fall back to a
+# capitalized form (e.g. "mytools" -> "Mytools").
+_CATEGORY_DISPLAY_NAMES = {
+    'core': 'Core',
+    'byterefinery': 'ByteRefinery',
+    'general': 'General',
+    'go': 'Go',
+    'javascript': 'JavaScript',
+    'models': 'Models',
+    'python': 'Python',
+}
+
+
+def _category_label(dirname):
+    """Label for a collection directory name.
+
+    'skills' -> 'core', 'skills-<x>' -> '<x>', anything else -> itself.
+    """
+    if dirname == 'skills':
+        return 'core'
+    if dirname.startswith('skills-'):
+        return dirname[len('skills-'):]
+    return dirname
+
+
+def _category_display_name(label):
+    """Human-readable category name for table headings."""
+    return _CATEGORY_DISPLAY_NAMES.get(label, label.capitalize())
+
+
+def _discover_categories(skills_dir):
+    """Return an ordered list of (dir, label) collection pairs.
+
+    The primary --skills-dir collection comes first; then every sibling
+    collection directory named 'skills' or 'skills-*' in the same parent
+    directory, sorted by name.
+    """
+    abs_dir = os.path.abspath(skills_dir)
+    categories = [(abs_dir, _category_label(os.path.basename(abs_dir)))]
+    parent = os.path.dirname(abs_dir)
+    if os.path.isdir(parent):
+        for entry in sorted(os.listdir(parent)):
+            full = os.path.join(parent, entry)
+            if full == abs_dir or not os.path.isdir(full):
+                continue
+            if entry == 'skills' or entry.startswith('skills-'):
+                categories.append((full, _category_label(entry)))
+    return categories
 
 
 def _discover_skills(skills_dir):
@@ -1172,42 +1229,220 @@ def _discover_skills(skills_dir):
         if fm:
             name = fm.get('name', name)
             desc = fm.get('description', '') or ''
+        # YAML block scalars (description: >) keep a trailing newline (and
+        # literal | keeps internal ones); collapse all whitespace so the
+        # description always fits on a single table row.
+        desc = ' '.join(str(desc).split())
         skills.append((name, desc))
     return skills
 
 
-def _build_table(skills):
-    """Build the Skills Table markdown from a list of (name, description)."""
-    lines = ["## Skills Table", "", "| No | Skill | Description |", "|----|-------|-------------|"]
+def _build_table(skills, heading):
+    """Build a category table markdown under *heading* from a list of
+    (name, description)."""
+    lines = [f"## {heading}", "", "| No | Skill | Description |", "|----|-------|-------------|"]
     for i, (name, desc) in enumerate(skills, 1):
         lines.append(f"| {i} | {name} | {desc} |")
     return "\n".join(lines)
 
 
-def _build_statistics(total):
-    """Build the Statistics section markdown."""
-    return f"\n## Statistics\n\n- **Total Skills**: {total}"
+def _build_statistics(per_category):
+    """Build the Statistics section markdown.
+
+    per_category is a list of (label, count) pairs; the total is summed.
+    """
+    total = sum(count for _, count in per_category)
+    lines = ["## Statistics", "", "| Category | Skills |", "|----------|--------|"]
+    for label, count in per_category:
+        lines.append(f"| {label} | {count} |")
+    lines += ["", f"- **Total Skills**: {total}"]
+    return "\n".join(lines)
+
+
+def _resolve_only(categories, only_arg):
+    """Resolve a --only argument to a (dir, label) pair from *categories*.
+
+    Accepts a collection path, a directory basename ('skills-python'),
+    a category label ('python'), or a display name ('Python'). Returns
+    None if nothing matches.
+    """
+    arg_abs = os.path.abspath(only_arg)
+    arg_base = os.path.basename(only_arg.rstrip('/'))
+    for cat_dir, label in categories:
+        if os.path.abspath(cat_dir) == arg_abs:
+            return (cat_dir, label)
+    for cat_dir, label in categories:
+        if os.path.basename(cat_dir) == arg_base:
+            return (cat_dir, label)
+    for cat_dir, label in categories:
+        if label == only_arg or _category_display_name(label) == only_arg:
+            return (cat_dir, label)
+    return None
+
+
+def _parse_blocks(readme):
+    """Split *readme* into (prefix, blocks, suffix).
+
+    blocks is a list of (label, content) pairs in document order — label
+    is the category label for table blocks, None for the stats block;
+    content is the text between the marker pair (no surrounding
+    newlines). prefix is everything before the first opening marker,
+    suffix everything after the last closing marker. An unterminated
+    block extends to EOF; stray closing markers stay plain text.
+    """
+    lines = readme.splitlines(keepends=True)
+    prefix_end = None
+    suffix_start = len(lines)
+    blocks = []
+    in_block = False
+    open_label = None
+    content_start = None
+
+    for i, line in enumerate(lines):
+        stripped = line.rstrip('\n')
+        if not in_block:
+            m = _SKMAN_OPEN_TABLE_RE.match(stripped)
+            if m or _SKMAN_OPEN_STATS_RE.match(stripped):
+                in_block = True
+                open_label = m.group(1) if m else None
+                content_start = i + 1
+                if prefix_end is None:
+                    prefix_end = i
+                continue
+        else:
+            if open_label is None:
+                if _SKMAN_CLOSE_STATS_RE.match(stripped):
+                    in_block = False
+                    blocks.append((None, ''.join(lines[content_start:i]).strip('\n')))
+                    suffix_start = i + 1
+            else:
+                m = _SKMAN_CLOSE_TABLE_RE.match(stripped)
+                if m and m.group(1) == open_label:
+                    in_block = False
+                    blocks.append((open_label, ''.join(lines[content_start:i]).strip('\n')))
+                    suffix_start = i + 1
+    if in_block:
+        blocks.append((open_label, ''.join(lines[content_start:]).strip('\n')))
+        suffix_start = len(lines)
+
+    if prefix_end is None:
+        return readme, blocks, ''
+    return ''.join(lines[:prefix_end]), blocks, ''.join(lines[suffix_start:])
+
+
+def _render_blocks(blocks):
+    """Render (label, content) pairs as marked blocks joined by blank
+    lines. No trailing newline."""
+    parts = []
+    for label, content in blocks:
+        if label is None:
+            parts.append(f"<!-- SKMAN:STATS -->\n{content}\n<!-- /SKMAN:STATS -->")
+        else:
+            parts.append(
+                f"<!-- SKMAN:TABLE:{label} -->\n{content}\n<!-- /SKMAN:TABLE:{label} -->"
+            )
+    return '\n\n'.join(parts)
+
+
+def _assemble_readme(prefix, blocks_text, suffix):
+    """Join prefix + generated blocks + suffix with single blank lines
+    and a single trailing newline."""
+    out = prefix.rstrip('\n')
+    if out:
+        out += '\n\n'
+    out += blocks_text
+    s = suffix.strip('\n')
+    if s:
+        out += '\n\n' + s
+    return out + '\n'
 
 
 def cmd_generate(args):
-    """Generate the Skills Table and Statistics in README.md."""
-    skills = _discover_skills(args.skills_dir)
-    if not skills:
-        _die(f"generate: no skills found in '{args.skills_dir}'")
+    """Generate per-category Skills Tables and Statistics in README.md.
 
-    section = f"{AUTOGEN_MARKER}\n{_build_table(skills)}\n{_build_statistics(len(skills))}\n"
+    Scans the --skills-dir collection plus every sibling skills/skills-*
+    collection in the same parent directory. By default every non-empty
+    collection's table is (re)generated and obsolete table blocks are
+    removed. With --only, just that collection's table is refreshed (its
+    markers created if missing) and the other tables are kept as-is;
+    statistics are recomputed from all collections in both modes.
+
+    Tables and statistics live between per-block HTML comment markers
+    ('<!-- SKMAN:TABLE:<label> -->' / '<!-- SKMAN:STATS -->') which are
+    replaced in place — new skills-* directories get new marker blocks
+    automatically (core first, then alphabetical).
+    """
+    categories = _discover_categories(args.skills_dir)
+
+    only = None
+    if args.only:
+        only = _resolve_only(categories, args.only)
+        if only is None:
+            known = ', '.join(
+                f'{label} ({os.path.basename(cat_dir)})'
+                for cat_dir, label in categories
+            )
+            _die(f"generate: --only '{args.only}' does not match any collection "
+                 f"(available: {known})")
+
+    fresh = {}
+    per_category = []
+    order = []
+    for i, (cat_dir, label) in enumerate(categories):
+        skills = _discover_skills(cat_dir)
+        if not skills:
+            continue
+        heading = 'Skills Table' if i == 0 else f'{_category_display_name(label)} Skills'
+        fresh[label] = _build_table(skills, heading)
+        per_category.append((label, len(skills)))
+        order.append(label)
+
+    if not fresh:
+        _die(
+            f"generate: no skills found in '{args.skills_dir}' "
+            f"or in sibling skills-*/ collections"
+        )
 
     if not os.path.isfile(args.readme):
         _die(f"generate: README not found at '{args.readme}'")
     with open(args.readme, 'r') as f:
         readme = f.read()
-    idx = readme.find(AUTOGEN_MARKER)
-    if idx == -1:
-        _die(f"generate: auto-generated marker not found in '{args.readme}'")
 
+    prefix, existing, suffix = _parse_blocks(readme)
+    existing_map = {}
+    for label, content in existing:
+        existing_map.setdefault(label, content)
+
+    if only is None:
+        blocks = [(label, fresh[label]) for label in order]
+    else:
+        only_label = only[1]
+        if only_label not in fresh:
+            _die(f"generate: no skills found in '{args.only}' — nothing to regenerate")
+        blocks = []
+        for label in order:
+            if label == only_label:
+                blocks.append((label, fresh[label]))
+            elif label in existing_map:
+                blocks.append((label, existing_map[label]))
+    blocks.append((None, _build_statistics(per_category)))
+
+    new_readme = _assemble_readme(prefix, _render_blocks(blocks), suffix)
     with open(args.readme, 'w') as f:
-        f.write(readme[:idx] + section)
-    print(f"generate: updated {args.readme} with {len(skills)} skills")
+        f.write(new_readme)
+
+    total = sum(count for _, count in per_category)
+    new_blocks = [label for label, _ in blocks
+                  if label is not None and label not in existing_map]
+    msg = f"generate: updated {args.readme}"
+    if only is None:
+        msg += f" with {len(order)} table(s)"
+    else:
+        msg += f" ({only_label} table)"
+    msg += f", {total} skills total"
+    if new_blocks:
+        msg += f", new marker block(s): {', '.join(new_blocks)}"
+    print(msg)
 
 
 # ---------------------------------------------------------------------------
@@ -1224,7 +1459,7 @@ def build_parser():
               create      Scaffold a new skill directory with SKILL.md
               validate    Check SKILL.md against spec rules
               info        Print frontmatter and structural summary
-              generate    Generate Skills Table and Statistics in README.md
+              generate    Generate per-category Skills Tables and Statistics in README.md
 
             Use '<subcommand> --help' for details on each subcommand.
         """),
@@ -1358,13 +1593,25 @@ def build_parser():
     p_generate = sub.add_parser(
         'generate',
         description=textwrap.dedent("""\
-            Generate the Skills Table and Statistics section in README.md.
+            Generate the per-category Skills Tables and Statistics in README.md.
 
-            Scans all skill directories for SKILL.md files, parses frontmatter,
-            and replaces everything from the auto-generated marker to end of file.
+            Scans the --skills-dir collection plus every sibling skills/skills-*
+            collection directory in the same parent directory. By default every
+            non-empty collection's table is (re)generated; with --only just that
+            collection's table is refreshed (its markers created if missing) and
+            the other tables are kept as-is. --only accepts a category label
+            ('python'), a directory basename ('skills-python'), or a path. ##
+            Statistics is always recomputed from all collections.
+
+            Tables and statistics live in README.md between per-block HTML
+            comment markers ('<!-- SKMAN:TABLE:<label> -->' and
+            '<!-- SKMAN:STATS -->'); generate replaces block contents in place
+            and adds marker blocks automatically for new skills-* directories.
 
             Examples:
               skman.py generate
+              skman.py generate --only python
+              skman.py generate --only .agents/skills-python
               skman.py generate --skills-dir ./custom-skills
               skman.py generate --readme ./docs/README.md
         """),
@@ -1379,6 +1626,13 @@ def build_parser():
         '--readme',
         default='README.md',
         help='Path to README.md to update (default: README.md)',
+    )
+    p_generate.add_argument(
+        '--only',
+        default=None,
+        metavar='CATEGORY',
+        help="Regenerate only this collection's table (label 'python', basename "
+             "'skills-python', or path); other tables kept, Statistics recomputed",
     )
 
     return parser

@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-08-15 — skman: Multi-Category README Tables
+
+### Changed
+- **skman** `generate` now scans the `--skills-dir` collection plus every
+  sibling `skills`/`skills-*` collection directory in the same parent
+  directory, emitting one table per non-empty category — the first keeps the
+  `## Skills Table` heading, siblings get `## <Category> Skills` (e.g.
+  `## Python Skills`) — followed by a per-category Statistics summary with
+  the overall total (previously only the single `--skills-dir` collection
+  was listed)
+- **skman** README generated region moved from a single end-of-file marker to
+  per-block HTML comment markers (`<!-- SKMAN:TABLE:<label> -->`,
+  `<!-- SKMAN:STATS -->`); `generate` replaces block contents in place, adds
+  marker blocks automatically for new `skills-*` directories, and drops
+  blocks for removed ones; the legacy single-marker layout is migrated on
+  first run
+- **skman** `generate` gained `--only` to regenerate a single category's
+  table (accepts a category label, directory basename, or path); other tables
+  are kept as-is and Statistics is recomputed from all collections
+- **README** regenerated with all category tables: core, byterefinery,
+  general, go, javascript, models, python (156 skills total)
+
 ## 2026-06-30 — New Skill, do Restructured
 
 ### Added

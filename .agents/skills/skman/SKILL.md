@@ -14,7 +14,7 @@ metadata:
 
 # skman
 
-Tools and guidelines for creating, validating, and managing agent skills. `skman.py` scaffolds skill directories, validates format compliance, inspects structure, and regenerates the repository README.
+Tools and guidelines for creating, validating, and managing agent skills.
 
 ## Overview
 
@@ -25,7 +25,7 @@ Agent Skills are a lightweight, open format for extending AI agent capabilities 
 - **`create`** — Scaffold a skill directory (SKILL.md, optional scripts and references)
 - **`validate`** — Check format compliance (frontmatter, naming, structure)
 - **`info`** — Inspect frontmatter, body stats, heading hierarchy
-- **`generate`** — Regenerate the repo README.md with skills table and statistics
+- **`generate`** — Regenerate the repo README.md with per-category skills tables and statistics (core `skills` dir plus all sibling `skills-*` dirs)
 
 ## Usage
 
@@ -50,6 +50,15 @@ skman.py create my-skill "Desc" --with-scripts --lang bash   # shell wrapper
 ```
 
 Validates name and description (format, length, no `:`) before creating files. `--url` extracts name/version from GitHub, PyPI, npm, crates.io, GitLab, RubyGems URLs; the positional `name` and an explicit `--version` take precedence. LLM fallback: set `SKMAN_LLM_RESPONSE='{"version": "X.Y.Z"}'` env var. Note `--url` only extracts metadata — for code repositories, run the Creating a skill from a repository workflow first (clone the repo, then study it).
+
+### Regenerate README
+
+```bash
+skman.py generate
+skman.py generate --only python
+```
+
+Scans the `--skills-dir` collection (default `.agents/skills`) plus every sibling `skills`/`skills-*` collection in the same parent directory. Each non-empty collection gets a table (first `## Skills Table`, siblings `## <Category> Skills`) and a per-category `## Statistics` summary. Tables and statistics sit between their own HTML comment markers (`<!-- SKMAN:TABLE:<label> -->`, `<!-- SKMAN:STATS -->`), which `generate` replaces in place; new `skills-*` directories get marker blocks added automatically. `--only` (label, dir basename, or path) refreshes just that table; statistics are always recomputed.
 
 ## Skill Format
 
