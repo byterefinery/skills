@@ -18,11 +18,7 @@ No script runs, no references load, no commentary. A skill can be as simple as a
 
 ## Invoked with "Hello"
 
-The agent replies exactly:
-
-> world
-
-No script runs. This fixed "Hello" → "world" mapping is hardcoded in the skill itself, showing that a skill's logic can live entirely in SKILL.md without touching `scripts/`.
+The instructions for this case are not in SKILL.md — they live in [03-hello.md](03-hello.md), and the agent must load that file to learn how to respond. No script runs. This is the skill's progressive-disclosure demonstration: a use case's logic sits in a reference file the agent has to open on demand, instead of inline in SKILL.md or in `scripts/`.
 
 ## Invoked with other text
 

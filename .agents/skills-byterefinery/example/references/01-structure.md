@@ -11,7 +11,8 @@ example/
 │   └── example.sh        # Optional — helper script, executed not loaded
 └── references/
     ├── 01-structure.md   # This file — structure, in detail
-    └── 02-invocation.md  # How the skill behaves when invoked
+    ├── 02-invocation.md  # How the skill behaves when invoked
+    └── 03-hello.md       # Instructions for the "Hello" case, loaded on demand
 ```
 
 Only `SKILL.md` is required; everything else is optional.
