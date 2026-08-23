@@ -10,9 +10,9 @@ How the `example` skill behaves, step by step.
 
 ## Invoked with no text
 
-The agent replies exactly:
+"No text" means nothing remains after removing the request for the skill itself (for example, "Use the example skill." leaves nothing). The agent replies exactly:
 
-> This is an example skill.
+> This is an example skill. (anchor 4f7a)
 
 No script runs, no references load, no commentary. A skill can be as simple as a fixed reply — this is the demonstration.
 
