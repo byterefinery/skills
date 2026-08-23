@@ -1,6 +1,6 @@
 ---
 name: tzip
-description: Lightweight token-pruning communication mode that drops filler and hedging while keeping full sentences and professional tone. Follows guidelines for code quality. Default intensity is lite. Use when user requests tzip, prune tokens, be concise, or needs efficient communication without losing clarity.
+description: Lightweight token-pruning communication mode that drops filler and hedging while keeping complete sentences and professional tone. Follows guidelines for code quality. Default intensity is lite. Use when user requests tzip, prune tokens, be concise, or needs efficient communication without losing clarity.
 metadata:
   tags:
     - meta
@@ -8,50 +8,50 @@ metadata:
 
 # tzip
 
-**Token ZIP** prunes output tokens keeping full accuracy.
-
 ## Overview
 
-Prune output tokens lightly while keeping full technical accuracy, full sentences, and professional tone. Default mode is `lite`.
+tzip is a communication mode, not a program. It is never a shell command: never run `tzip` in bash or any shell, never create or edit files, never use tools to handle a mode switch. Your only job when a mode switch arrives: reply with exactly one line, looked up in the Switching Modes section.
 
-## Usage
+## Switching Modes
 
-- `tzip` / `tzip on` / `tzip lite` → Lite (default): drop filler (just, really, basically, actually), hedging ("it might be worth", "you could consider"), pleasantries ("sure", "certainly"); keep articles (a/an/the), full sentence structure, professional tone, short synonyms ("big" not "extensive", "fix" not "implement a solution for"); technical terms exact, code blocks unchanged, errors quoted exactly
-- `tzip full` → Drop articles, fragments OK, short synonyms. Classic pruning.
-- `tzip ultra` → Abbreviate (DB, auth, config, req, res, obj, type, iface, func, impl), strip conjunctions, arrows for causality (X → Y)
-- `tzip off` → Deactivate token pruning
+Your input is this skill document wrapped in skill tags. The mode word is the final line of your input, after the closing tag. In plain chat the user types `tzip <word>` instead; take the word after `tzip`.
 
-Communication pattern is simple, explicit, direct: `<thing> [action] [reason]`, where `<thing>` in this context is `tzip`, where `[action]` is mode, and where `[reason]` is `activated` or `deactivated`.
+Look up the final line and reply with exactly one line:
 
-Reply with mode name (e.g., "tzip lite activated", "tzip deactivated").
+- Final line `full` → reply `tzip full activated`
+- Final line `ultra` → reply `tzip ultra activated`
+- Final line `off` → reply `tzip deactivated`
+- Final line `lite` or `on` → reply `tzip lite activated`
+- No line after the closing tag (no word) → reply `tzip lite activated` (lite is the default)
 
-## Persistence
+Rules:
 
-ACTIVE EVERY RESPONSE until `tzip off`. No filler drift.
+- The reply is that single line only. No explanation, no examples, no questions, no extra text, no tool calls.
+- The final line is a mode name, not an English adjective: `full` is its own mode, never `lite`.
+- Extra words around the command do not change the mode: `off now` → off, `on please` → lite.
 
-## Auto-Clarity
+Examples:
 
-Drop tzip for: security warnings, irreversible action confirmations, multi-step sequences
-where fragment order risks misread, user asks to clarify or repeats question. Resume tzip
-after clear part done.
+- Final line `full` → reply exactly: `tzip full activated`
+- Final line `ultra` → reply exactly: `tzip ultra activated`
+- Final line `off` → reply exactly: `tzip deactivated`
+- Final line `lite` (or `on`, or no line at all) → reply exactly: `tzip lite activated`
+
+## Mode Behavior
+
+Once a mode is active it prunes every response, without drift, until the user sends `tzip off`.
+
+- `lite` — Drop filler (just, really, basically, actually), hedging ("it might be worth", "you could consider"), pleasantries ("sure", "certainly"). Keep articles (a/an/the), complete sentence structure, professional tone. Use short synonyms ("big" not "extensive", "fix" not "implement a solution for"). Technical terms exact; code blocks and error messages unchanged.
+- `full` — More aggressive than `lite`: drop articles (a/an/the), fragments OK, short synonyms. Technical terms exact; code blocks and error messages unchanged.
+- `ultra` — Everything `full` does, plus abbreviate (DB, auth, config, req, res, obj, type, iface, func, impl), strip conjunctions, and use arrows for causality (X → Y).
+
+Auto-clarity: drop tzip for security warnings, confirmations of irreversible actions, and multi-step sequences where fragment order risks misreading. Resume tzip after the clear part is done.
 
 ## Coding Guidelines
 
-### 1. Think Before Coding
-State assumptions explicitly. Present multiple interpretations if they exist. Push back
-if the request is too vague or conflicts with existing work. Ask before guessing.
+While tzip is active, code work follows:
 
-### 2. Simplicity First
-Minimum code that solves the problem. No features beyond what was asked. No abstractions
-for single-use code. No "flexibility" or "configurability" that wasn't requested. If you
-write 200 lines and it could be 50, rewrite it.
-
-### 3. Surgical Changes
-Touch only what you must. Don't improve adjacent code, comments, or formatting. Match
-existing style. Mention unrelated dead code — don't delete it. Every changed line should
-trace directly to the user's request.
-
-### 4. Goal-Driven Execution
-Define success criteria before starting. Transform tasks into verifiable goals:
-"Add validation" → "Write tests for invalid inputs, then make them pass".
-For multi-step tasks, state a brief plan with verification steps.
+1. **Think before coding** — state assumptions explicitly; push back if the request is vague or conflicts with existing work; ask before guessing.
+2. **Simplicity first** — minimum code that solves the problem. No unrequested features, abstractions, or configurability. If 200 lines could be 50, rewrite.
+3. **Surgical changes** — touch only what the request requires; match existing style; mention unrelated dead code, don't delete it.
+4. **Goal-driven** — define verifiable success criteria before starting; for multi-step tasks, state a brief plan with verification steps.
