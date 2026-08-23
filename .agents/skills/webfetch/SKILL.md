@@ -14,49 +14,47 @@ metadata:
 
 ## Overview
 
-Fetches web pages and outputs clean markdown optimized for LLM consumption.
+Fetches a web page and returns its content as clean markdown (default) or raw HTML, sanitized for LLM consumption.
 
-Defaults (no flags needed):
-- **Safari impersonation** — TLS fingerprint (scrapling) or user-agent (requests), rarely blocked
-- **AI-targeted markdown** — strips scripts, styles, hidden elements, zero-width chars, prompt injection vectors
-- **Auto-detect fetcher** — tries scrapling → browser → requests
-
-Fetcher priority:
-1. **scrapling** — `Fetcher.get()` with Safari TLS impersonation + AI-targeted sanitization via `markdownify`
-2. **browser** — `DynamicFetcher.fetch()` with system Chrome/Chromium for JavaScript-rendered SPAs
-3. **requests** — stdlib fallback with Safari user-agent + built-in HTML-to-markdown conversion
-
-SPA auto-detection: if scrapling returns an empty shell (large HTML, tiny content, framework markers like `<div id="root">`, import maps, etc.), automatically retries with the browser fetcher. Use `--tool` to force a specific fetcher.
-
-Use `--html` for raw HTML, `--impersonate` to change browser, `--no-ai-targeted` to skip sanitization, `--tool` to force a fetcher.
+One script does everything. You do not write any code — you run one bash command with the URL, and the command's stdout (or the file you named) is the page content.
 
 ## Usage
 
+The script is `scripts/webfetch.py`, in the `scripts/` folder of this skill. The skill's directory is printed in the header above this text (the line `References are relative to <dir>`).
+
+**Step 1 — Read the user's request, then pick the flags:**
+
+- plain page content → no extra flags
+- raw HTML or "HTML source" → add `--html`
+- save to a file → add `--file <path>`
+- "without sanitization" or unfiltered content → add `--no-ai-targeted`
+- a specific fetcher (scrapling, browser, requests) → add `--tool <name>`
+- impersonating chrome or firefox → add `--impersonate <name>`
+
+Combine flags when the request needs several (e.g. `--html --file /abs/path.html`).
+
+**Step 2 — Run exactly one bash command (no `cd`, from wherever you are):**
+
 ```bash
-# Default: Safari-impersonated, AI-targeted markdown to stdout
-webfetch.py https://example.com
-
-# Save to file
-webfetch.py --file ./page.md https://example.com
-
-# Raw HTML (skip markdown conversion)
-webfetch.py --html https://example.com
-
-# Override defaults (rarely needed)
-webfetch.py --impersonate chrome https://example.com
-webfetch.py --no-ai-targeted https://example.com
-webfetch.py --tool requests https://example.com
+uv run --script /home/mtasic/projects-b/skills/.agents/skills/webfetch/scripts/webfetch.py <flags> https://example.com
 ```
 
-`--file` auto-detects format from extension (`.html`/`.htm` → HTML, everything else → markdown) unless `--html`/`--md` is also given.
+The script path is the skill's directory from the header plus `scripts/webfetch.py` — copy that full path exactly into every command. Replace `<flags>` with the flags from step 1 (leave it out when none), and replace the URL.
 
-`--tool` accepts: `scrapling`, `browser`, `requests`. Without `--tool`, auto-detect tries scrapling → browser → requests.
+**Step 3 — Get the content:**
+
+- without `--file`: the bash tool result (stdout) is the content. Answer the user's question from it. Done — there is no output file and nothing else to do.
+- with `--file`: the command prints nothing. That is normal, not an error — the content went into the file. `read` the file, then answer. The file is created in the current working directory (the user's project), not in the skill's directory: `--file ./tangled.md` lands in the project root.
+
+Use `--file` (not a `>` redirect) when the user asks to save to a file.
 
 ## Gotchas
 
-- **Output is LLM-optimized by default** — Safari impersonation + AI-targeted markdown (scripts, styles, hidden elements, zero-width chars, prompt injection vectors stripped). Use `--no-ai-targeted` only if you need raw content.
-- **SPA auto-detection** — if scrapling returns an empty shell (large HTML, tiny content, framework markers), the script automatically retries with the browser fetcher. No `--tool browser` needed for most SPAs.
-- **`--tool browser` needs system Chrome/Chromium** — uses `real_chrome=True` to find system-installed browsers. If unavailable, auto-detect falls back to requests.
-- **`--impersonate` is safari by default** — change only if a site blocks Safari fingerprints. Accepts chrome, firefox, or any curl-impersonate browser name.
-- **`--file` format auto-detection** — `.html`/`.htm` extensions trigger HTML output; all other extensions default to markdown. Explicit `--html`/`--md` overrides.
-- **Script is self-contained** — dependencies (`scrapling[all]`, `markdownify`, `requests`) declared inline via PEP 723. `uv run --script` resolves them automatically.
+- **Do not read the script to learn how to use it** — the steps above are all you need. `read scripts/webfetch.py` wastes a turn; run it with the URL.
+- **Do not run `python webfetch.py` or `python3 webfetch.py` directly** — the script needs packages (`scrapling`, `markdownify`, `requests`) that are not on the system Python. Plain python either crashes on import or silently falls back to a worse fetcher. Always use `uv run --script`; it resolves the dependencies declared in the file automatically.
+- **Do not install anything** — no `pip install`, no venv, no `requirements.txt`. `uv run --script` handles dependencies.
+- **Do not search for the script** — no `which webfetch.py`, no `find`. Its full path is the skill's directory (from the header) plus `scripts/webfetch.py`. If the command fails with a missing file, you mistyped the path — copy it exactly from the command example above and retry; do not search.
+- **Fetch once, with the right flags** — do not run a default fetch first "to check" and then fetch again with flags. Pick the flags in step 1 and run the command once.
+- **SPA auto-detection** — if the first fetcher returns an empty JavaScript shell, the script automatically retries with a real browser. Do not add `--tool browser` preemptively.
+- **`--tool browser` needs system Chrome/Chromium** — if unavailable, auto-detect falls back to requests.
+- **`--file` auto-detects format from the extension** — `.html`/`.htm` → HTML, everything else → markdown.
