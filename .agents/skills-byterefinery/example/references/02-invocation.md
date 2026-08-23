@@ -22,10 +22,10 @@ The instructions for this case are not in SKILL.md — they live in [03-hello.md
 
 ## Invoked with other text
 
-Any other text the user gives is forwarded as CLI parameters to `scripts/example.sh`:
+Any other text the user gives is forwarded as CLI parameters to `example.sh`:
 
 ```bash
-scripts/example.sh hello world
+./example.sh hello world
 ```
 
 `example.sh` accepts and ignores the parameters — it always prints:
@@ -41,5 +41,5 @@ The forwarding is the demonstration, not the output.
 If the user asks to "call script", run `example.sh` directly, with any parameters the user named:
 
 ```bash
-scripts/example.sh
+./example.sh
 ```
