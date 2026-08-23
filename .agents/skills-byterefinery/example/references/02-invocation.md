@@ -10,9 +10,9 @@ How the `example` skill behaves, step by step.
 
 ## Invoked with no text
 
-"No text" means nothing remains after removing the request for the skill itself (for example, "Use the example skill." leaves nothing). The agent replies exactly:
+The agent replies exactly:
 
-> This is an example skill. (anchor 4f7a)
+> This is an example skill.
 
 No script runs, no references load, no commentary. A skill can be as simple as a fixed reply — this is the demonstration.
 
@@ -25,7 +25,7 @@ The instructions for this case are not in SKILL.md — they live in [03-hello.md
 Any other text the user gives is forwarded as CLI parameters to `scripts/example.sh`:
 
 ```bash
-bash scripts/example.sh hello world
+scripts/example.sh hello world
 ```
 
 `example.sh` accepts and ignores the parameters — it always prints:
@@ -41,5 +41,5 @@ The forwarding is the demonstration, not the output.
 If the user asks to "call script", run `example.sh` directly, with any parameters the user named:
 
 ```bash
-bash scripts/example.sh
+scripts/example.sh
 ```
