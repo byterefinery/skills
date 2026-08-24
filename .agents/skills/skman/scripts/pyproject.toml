@@ -1,0 +1,9 @@
+[project]
+name = "scripts"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = [
+    "gepa[full]>=0.1.4",
+    "ruff>=0.16.4",
+    "ty>=0.0.74",
+]
