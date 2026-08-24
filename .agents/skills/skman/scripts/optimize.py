@@ -5,42 +5,62 @@
 # dependencies = ["gepa[full]"]
 # ///
 
+import re
 import subprocess
+from typing import Any
+from pprint import pprint
+from random import shuffle
 from tempfile import TemporaryDirectory
 
 import gepa.optimize_anything as oa
-from gepa.optimize_anything import optimize_anything, GEPAConfig, EngineConfig, ReflectionConfig
+from gepa.optimize_anything import (
+    EngineConfig,
+    GEPAConfig,
+    ReflectionConfig,
+)
 
+# STUDENT_MODEL = 'LiquidAI/LFM2.5-2.6B'
+# STUDENT_MODEL_THINKING = 'high'
 
-STUDENT_MODEL = 'LiquidAI/LFM2.5-2.6B'
-STUDENT_MODEL_THINKING = 'high'
+TEACHER_MODEL = 'LiquidAI/LFM2.5-2.6B'
+TEACHER_MODEL_THINKING = 'high'
+# TEACHER_MODEL = 'Qwen/Qwen3.8-27B'
+# TEACHER_MODEL_THINKING = 'off' # 'xhigh'
 
-TEACHER_MODEL = 'Qwen/Qwen3.8-27B'
-TEACHER_MODEL_THINKING = 'off' # 'xhigh'
-
+# objective = '''\
+# Generate simple python function that implements basic string comparison algorithm, which returns one of: -1, 0, 1 .
+# '''
 objective = '''\
-Generate simple python function that implements basic string comparisson algorithm, which returns one of: -1, 0, 1 .
+Add 20 digit input integers and produce output as integer without using programming languages. Just use LLM.
 '''
 
 background = '''\
-You are using `pi` coding agent harness in the background to do optimization and fullfil your objective.
-You work in random temp directory. Never polute current working dir.
-If code is generated as a candidate, do not run generate code, just return it.
+You are using `pi` coding agent harness in the background to do optimization and fulfill your objective.
+You work in random temp directory. Never pollute current working directory.
+If output of optimization is programming code, do not run it, instead just return it.
 '''
 
 
-def pi(model: str, thinking: str, prompt: str, temp: bool=True) -> str:
+def pi(model: str, thinking: str, prompt: str, allow_tools: bool=True, temp: bool=True) -> str:
     cmd = [
         'pi',
         '--model', model,
         '--thinking', thinking,
+        # '--no-extensions',
         '--no-skills',
-        '--no-tools',
-        '--tools',
-        '"read,write,edit,bash"',
         '--no-context-files',
-        '-p',
+        '--no-tools',
+    ]
+
+    if allow_tools:
+        cmd += [
+            '--tools',
+            '"read,write,edit,bash"',
+        ]
+
+    cmd += [
         prompt,
+        '-p',
     ]
 
     # print(f'{cmd=}')
@@ -69,45 +89,104 @@ def pi(model: str, thinking: str, prompt: str, temp: bool=True) -> str:
 
 
 def reflection_lm(prompt: str) -> str:
-    # print('reflection_lm', prompt)
+    print('reflection_lm', prompt)
     content = pi(TEACHER_MODEL, TEACHER_MODEL_THINKING, prompt)
     return content
 
 
-def evaluate(candidate) -> float:
-    # pi - student
+def extract_int(text: str) -> int | None:
+    """Pull the first integer (possibly negative) from model output."""
+    m = re.search(r"-?\d+", text.replace(",", "").replace(" ", ""))
 
-    # pi - teacher
-    score: str | float = pi(
-        TEACHER_MODEL,
-        TEACHER_MODEL_THINKING,
-        (
-            'score solution candidate on scale from `0.0` to `1.0`\n'
-            f'<objective>{objective}</objective>\n'
-            f'<candidate>{candidate}</candidate>\n'
-            'Output is single float number.'
-        )
+    if m:
+        try:
+            return int(m.group())
+        except ValueError:
+            return None
+
+    return None
+
+
+def evaluate(candidate: str, example: dict) -> tuple[float, dict[str, Any]]:
+    inputs = example["inputs"]
+    expected = example["output"]
+
+    prompt = (
+        'You must solve this using only language reasoning. Do not write or execute any code.\n'
+        f'<candidate>{candidate}</candidate>\n'
+        f'<example>{example}</example>\n'
+        'Reply with ONLY the final integer answer, nothing else.'
     )
 
+    side_info: dict[str, Any] = {
+        "inputs": inputs,
+        "expected": expected,
+        "candidate_preview": candidate[:300],
+    }
+
     try:
-        score = float(score)
-    except ValueError:
+        raw = pi(
+            TEACHER_MODEL,
+            TEACHER_MODEL_THINKING,
+            prompt,
+            allow_tools=False,
+        )
+
+        side_info["raw_response"] = raw
+        predicted = extract_int(raw)
+        side_info["predicted"] = predicted
+
+        if predicted is None:
+            score = 0.0
+            side_info["error"] = "could not parse integer"
+        elif predicted == expected:
+            score = 1.0
+        else:
+            # soft signal for large integers (optional but helpful)
+            rel_err = abs(predicted - expected) / max(abs(expected), 1)
+            score = max(0.0, 1.0 - min(rel_err, 1.0))
+            side_info["rel_error"] = rel_err
+    except Exception as e:
         score = 0.0
+        side_info["error"] = str(e)
+        predicted = None
 
-    # oa.log(f'{candidate=} {score=}')
-    # print(f'{candidate=} {score=}')
-    return score
+    oa.log(f'score={score} predicted={predicted} expected={expected}')
+    return score, side_info
 
+
+train_set = [
+    {'inputs': [a, a + 19], 'output': a + a + 19}
+    for a in range(1_000_000, 1_000_000 + 100, 19)
+] + [
+    {'inputs': [a, a + 19], 'output': a + a + 19}
+    for a in range(12_345_678_901_234_567_890, 12_345_678_901_234_567_890 + 100, 19)
+]
+
+shuffle(train_set)
+
+val_set = [
+    {'inputs': [a, a + 19], 'output': a + a + 19}
+    for a in range(10_000_000_000_000_000_000, 10_000_000_000_000_000_000 + 100, 19)
+]
+
+pprint(train_set)
+pprint(val_set)
+
+seed_candidate = 'Add two integers and produce output.'
 
 result = oa.optimize_anything(
+    seed_candidate=seed_candidate,
     evaluator=evaluate,
+    dataset=train_set,
+    valset=val_set,
     objective=objective,
     background=background,
     config=GEPAConfig(
         engine=EngineConfig(
             # display_progress_bar=True,
             parallel=False,
-            max_metric_calls=10,
+            max_metric_calls=100,
         ),
         reflection=ReflectionConfig(
             reflection_lm=reflection_lm, # type: ignore
@@ -115,5 +194,8 @@ result = oa.optimize_anything(
     )
 )
 
+print('-' * 80)
 print(result)
+print('-' * 80)
 print(result.best_candidate)
+print('=' * 80)
