@@ -14,7 +14,7 @@ lm = dspy.LM(
     model_type="chat",
     temperature=..., # read for used model
     max_tokens=16384,
-    extra_headers={"x-session-affinity": f"dspy-optim-lfm2.5-2.6b-{session_id}"},  # per model + per REQUEST
+    extra_headers={"x-session-affinity": f"dspy-{model_name}-{session_id}"}, # per model + per REQUEST
     extra_body={
         "top_k": ..., # read for used model, or omit if missing
         "min_p": ..., # read for used model, or omit if missing
