@@ -5,7 +5,7 @@
 # dependencies = ["gepa[full]"]
 # ///
 
-# ruff: noqa: I001
+# ruff: noqa: I001, EXE001
 import re
 import subprocess
 from typing import Any
@@ -147,7 +147,7 @@ def evaluate(candidate: str, example: dict) -> tuple[float, dict[str, Any]]:
             rel_err = abs(predicted - expected) / max(abs(expected), 1)
             score = max(0.0, 1.0 - min(rel_err, 1.0))
             side_info["rel_error"] = rel_err
-    except Exception as e:
+    except Exception as e: # noqa
         score = 0.0
         side_info["error"] = str(e)
         predicted = None
