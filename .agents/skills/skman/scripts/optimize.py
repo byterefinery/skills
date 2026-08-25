@@ -5,6 +5,7 @@
 # dependencies = ["gepa[full]"]
 # ///
 
+# ruff: noqa: I001
 import re
 import subprocess
 from typing import Any
