@@ -7,4 +7,5 @@ dependencies = [
     "gepa[full]>=0.1.4",
     "ruff>=0.16.4",
     "ty>=0.0.74",
+    "wikipedia>=1.4.0",
 ]
