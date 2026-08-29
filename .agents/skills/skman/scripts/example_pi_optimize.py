@@ -47,7 +47,7 @@ def pi(model: str, thinking: str, prompt: str, allow_tools: bool=True, temp: boo
         'pi',
         '--model', model,
         '--thinking', thinking,
-        # '--no-extensions',
+        '--no-extensions',
         '--no-skills',
         '--no-context-files',
         '--no-tools',
