@@ -1,0 +1,370 @@
+# Generation
+
+Teich generates new datasets by running agent CLIs in Docker (`codex`, `pi`, `claude-code`, `hermes`) or by calling an OpenAI-compatible chat API directly (`chat`). Use generation when you want Teich to create source data. If you already have JSONL, a Hugging Face dataset, or a `datasets.Dataset`, use [04-prepare-data](04-prepare-data.md) instead. For a browser workflow, see [06-studio](06-studio.md).
+
+## Contents
+
+- [Project workflow](#project-workflow)
+- [Prompt files](#prompt-files)
+- [config.yaml](#configyaml)
+- [Developer instructions](#developer-instructions)
+- [Providers](#providers) — codex, pi, openclaw, claude-code, hermes, chat
+- [Capture harness context](#capture-harness-context)
+- [Local providers](#local-providers)
+- [Outputs and publishing](#outputs-and-publishing)
+
+## Project workflow
+
+```bash
+teich init my-project
+cd my-project
+teich generate -c config.yaml
+teich generate -c config.yaml --resume   # resume an interrupted batch
+```
+
+`--resume` scans completed output rows and skips prompts that already converted into training examples. Failed or interrupted agent traces are moved to `failures/` and are not treated as completed data.
+
+## Prompt files
+
+JSONL or NDJSON is recommended — it safely supports long prompts, code fences, newlines, repository metadata, and follow-up turns:
+
+```jsonl
+{"prompt":"Build a simple todo list app in React"}
+{"github_repo":"armand0e/perplexica-mcp","prompt":"Improve the search flow and update tests"}
+{"system":"Answer as a concise project manager.","prompt":"Draft a compact project plan"}
+{"prompt":"Draft a compact project plan","follow_up_prompts":["Revise it for a solo developer","Add a risk checklist"]}
+```
+
+Each row can include:
+
+- `prompt` — required initial user prompt
+- `system` — optional prompt-specific system prompt
+- `github_repo` — optional `owner/repo` checkout for Docker-backed agent runs
+- `follow_up_prompts` — optional list of additional user turns
+
+`follow_up_prompts` works across providers. The `chat` provider sends each follow-up as a real additional user turn in one generated training row. Agent providers keep one Docker container alive for the full prompt sequence and resume or continue the same saved agent session for each follow-up so workspace edits, tool caches, and in-container installs remain available.
+
+CSV, JSON, and plain text prompt files are supported, but JSONL is safer. Prompts can also come from inline `prompts:` entries in `config.yaml` (or both). Relative paths resolve from the config file's location.
+
+## config.yaml
+
+Full annotated schema (all keys optional unless noted):
+
+```yaml
+agent:
+  provider: pi                # codex, pi, claude-code, hermes, or chat
+
+  # Codex-only: use your ChatGPT subscription instead of an API key.
+  # codex:
+  #   use_host_auth: true
+  #   host_auth_file: null     # default: $CODEX_HOME/auth.json or ~/.codex/auth.json
+  #   auth_dir: ./.teich/codex-auth
+
+  # Claude Code-only settings.
+  # claude:
+  #   oauth_token: null        # prefer CLAUDE_CODE_OAUTH_TOKEN in the env
+  #   subscription_request_delay_seconds: 45   # 0 disables subscription pacing
+  #   fallback_model: [sonnet, haiku]
+  #   always_thinking: true
+  #   show_thinking_summaries: true
+  #   max_thinking_tokens: null
+
+  # Trace each agent session to Langfuse (Codex and Claude Code, native
+  # integrations). Side-channel only, fails open. All three required.
+  # langfuse:
+  #   enabled: true
+  #   public_key: pk-lf-...
+  #   secret_key: sk-lf-...
+  #   base_url: https://cloud.langfuse.com
+
+model:
+  model: deepseek/deepseek-v4-flash
+  approval_policy: never          # Codex approval behavior: never, on-request, ...
+  sandbox: danger-full-access     # Codex sandbox mode
+  reasoning_effort: medium        # Codex model_reasoning_effort; Pi low/medium/high; Claude Code --effort
+  reasoning_summary: null         # Codex only: auto | concise | detailed | none
+  reasoning_summaries_enabled: null  # Codex only: explicit capability toggle
+  service_tier: null              # Codex only: "fast" for fast mode; free-form passthrough
+  context_length: null            # context length override for providers that support it
+  # pi_model_overrides:           # Pi-specific provider overrides
+  #   maxTokens: 131072           # Teich already defaults maxTokens to 131072
+  #   compat:
+  #     maxTokensField: max_tokens
+
+api:
+  provider: openrouter
+  base_url: https://openrouter.ai/api/v1
+  api_key: null                   # prefer env vars: TEICH_API_KEY / OPENROUTER_API_KEY / OPENAI_API_KEY
+  wire_api: responses             # Pi uses chat/completions via OpenRouter even if this is responses
+
+# mcp_servers:                    # MCP servers exposed inside the agent runtime
+#   - name: filesystem
+#     command: npx
+#     args: ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"]
+
+prompts_file: prompts.jsonl
+prompts: []                       # optional inline prompts (objects support system + follow_up_prompts)
+
+output:
+  traces_dir: ./output
+  sandbox_dir: ./sandbox
+  failures_dir: ./failures
+  pretty_name: "My Agent Traces"
+
+publish:
+  repo_id: null                   # e.g. username/my-dataset for direct HF upload
+  hf_token: null                  # or env HF_TOKEN / HUGGINGFACE_HUB_TOKEN / TEICH_HF_TOKEN
+  private: false
+
+max_concurrency: 1
+timeout_seconds: 600
+openai_api_key: null              # legacy; prefer env vars or api.api_key
+
+developer_instructions: null      # injected into every agent run (see below)
+
+capture_harness_context:
+  enabled: false
+  required: true
+  timeout_seconds: 45
+```
+
+Generated-run dataset tags are derived from provider and model. Extraction dataset cards use the extracted provider tag and omit model tags:
+
+- `codex`, `pi`, `claude-code`, `hermes`, `cursor`: `agent-traces`, `format:agent-traces`, provider, model, `distillation`, `teich`
+- `chat`: `conversational`, model, `distillation`, `teich`
+
+## Developer instructions
+
+The top-level `developer_instructions` config is injected into **every** agent run as additive system/developer guidance via each agent's native mechanism:
+
+| Agent | Mechanism |
+|---|---|
+| codex | `developer_instructions` in `config.toml` |
+| claude-code | `--append-system-prompt` |
+| pi | `--append-system-prompt` |
+| hermes | auto-loaded `AGENTS.md` in the workspace (appended, so a cloned repo's own `AGENTS.md` is preserved) |
+
+It augments each agent's built-in base prompt rather than replacing it. A useful pattern for training data is to nudge the agent to narrate its reasoning in its visible output, which lands in the trace (and SFT rows) alongside Codex's reasoning summaries:
+
+```yaml
+developer_instructions: |
+  Think out loud so your problem-solving process is visible. Before each tool
+  call or edit, briefly explain what you're doing and why; after a command or
+  test runs, state what you concluded before the next step.
+```
+
+This produces reasoning *narration* in the assistant messages — not the model's hidden raw chain-of-thought, which providers don't expose. (The `chat` provider is text-only distillation and uses per-prompt `system` instead.)
+
+## Providers
+
+### `codex`
+
+Copies native Codex session JSONL from mounted `CODEX_HOME/sessions` and normalizes known Codex event-shape edge cases so reasoning summaries are visible and split assistant turns render as thinking before text or tool use. Teich appends configured `tool_schema` metadata so tools remain available for training even if the model did not call them.
+
+#### Using your ChatGPT subscription (host auth)
+
+By default Codex runs on an API key. To run it on your ChatGPT subscription instead, point Teich at your host Codex login:
+
+```yaml
+agent:
+  provider: codex
+  codex:
+    use_host_auth: true
+    # host_auth_file: null          # defaults to $CODEX_HOME/auth.json or ~/.codex/auth.json
+    # auth_dir: ./.teich/codex-auth # where the auth snapshot lives during a run
+```
+
+You must have logged in on the host first (`codex login`). When enabled, Teich:
+
+1. Copies your host `auth.json` **once** into `auth_dir` as a snapshot. It re-seeds from the host only when the host file is newer, so a token already rotated in place is never clobbered by a stale host copy.
+2. Starts a single host-side **token broker** that owns the rotating OAuth refresh token for the whole run. Each Codex container is seeded with its own `auth.json` whose `refresh_token` is a per-run secret, pointed at the broker via `CODEX_REFRESH_TOKEN_URL_OVERRIDE`. The broker is the sole caller of the real refresh endpoint, so the durable refresh token never enters a container.
+3. Passes **no** `*_API_KEY` env into the container, so Codex uses the subscription tokens even if an ambient `OPENAI_API_KEY` is set in your shell.
+
+Important caveats (Codex's OAuth refresh tokens are single-use/rotating):
+
+- **Your host login gets invalidated.** The first time the broker rotates the token, the server invalidates your interactive `codex` login on the host. Run `codex login` again afterward. Use a dedicated Codex login for batch runs if you don't want to disturb your daily one.
+- **`auth_dir` holds credentials.** Teich refuses to place it under `traces_dir`/`sandbox_dir`/`failures_dir` (those are uploaded) and drops a `.gitignore` (`*`) into it. Like the output dirs, `auth_dir` is resolved relative to the directory you run `teich` from, not the config file's location.
+- **Concurrency is safe.** The broker single-flights rotation and hands the same live access token to every container, so any `max_concurrency` works.
+- To re-seed from a fresh host login, delete `auth_dir` (or just its `auth.json`).
+
+#### Fast mode
+
+Codex "fast mode" is a service tier (not a model or reasoning level) that runs a supported model faster at a higher credit rate:
+
+```yaml
+model:
+  model: gpt-5.5      # fast mode supports gpt-5.5 / gpt-5.4
+  service_tier: fast
+```
+
+Teich writes `service_tier = "fast"` into the container's `config.toml`. Fast mode requires ChatGPT subscription auth (`agent.codex.use_host_auth: true`) and a supported model; with an API key Codex falls back to standard pricing. `service_tier` is a free-form passthrough, so other tiers (e.g. `flex`) also work.
+
+#### Reasoning summaries
+
+Codex reasoning models only return their chain-of-thought as opaque encrypted content plus human-readable **summaries**; the summaries are what Teich records in traces (as `reasoning_text`). Codex's default summary setting can yield empty summaries (`summary: []`). To capture richer reasoning:
+
+```yaml
+model:
+  model: gpt-5.5
+  reasoning_effort: xhigh     # depth of reasoning
+  reasoning_summary: detailed # how much of it is summarized into the trace
+  reasoning_summaries_enabled: true # force-enable the capability when needed
+```
+
+Teich writes `model_reasoning_summary = "detailed"` and, when the explicit toggle is set, `model_supports_reasoning_summaries = true` into `config.toml`. Summary values are `auto | concise | detailed | none` (free-form passthrough); leave either setting unset to use Codex's model catalog/default. The capability toggle is most useful for custom provider/model IDs that Codex cannot identify. These settings control the readable *summary* of the reasoning, not the raw chain-of-thought — Codex/OpenAI never return the full raw CoT in plaintext.
+
+A complete runnable example is `examples/config.codex-reasoning.yaml` in the Teich repo.
+
+### `pi`
+
+Copies native Pi session JSONL from mounted `/home/codex/pi-sessions`, then normalizes and validates tool-call structure before writing output. Teich appends prompt-level system metadata and configured tool metadata as `custom` events. For OpenRouter, Teich forces Pi onto the chat/completions wire path because Pi's OpenRouter Responses adapter can stall before the first session event.
+
+### `openclaw`
+
+OpenClaw is supported as an imported raw trace format only. Teich recognizes it when the first session event has `.openclaw` in its `cwd`, converts it with `metadata.trace_type = "openclaw"`, and does not apply Pi runner metadata snapshots. OpenClaw is not a Teich runner.
+
+### `claude-code`
+
+Copies Claude Code's native transcript JSONL from `.claude/projects/...` so the output keeps Claude's own `user`, `assistant`, `system`, and `result` event format. During conversion, Teich:
+
+- normalizes split assistant fragments so thinking appears before the text or tool use it explains
+- preserves Claude runtime context such as skill listings, MCP instruction deltas, permission context, date changes, hook context, and away summaries as masked `system` messages and `metadata.system_prompt`
+- filters local slash-command artifacts such as `/model`
+- keeps `/goal` as the actual user goal text
+- turns queued prompts into real user turns
+- emits schemas for advertised native Claude Code / Claude Desktop tools even if they were only declared through deferred-tool context
+
+With OpenRouter non-Claude models, Teich runs a local in-container proxy: Claude Code sees a Claude surrogate model name, while the proxy rewrites outbound requests back to the configured model. Native assistant/result events keep provider-returned model and usage fields when Claude Code records them.
+
+#### Using your Claude subscription (host auth)
+
+By default Claude Code runs on an API key (`ANTHROPIC_API_KEY` via `api.api_key` / env). To run it on your Claude subscription (Pro/Max) instead, create a long-lived OAuth token with `claude setup-token` on the host (valid for a year, purpose-built for headless use) and export it:
+
+```bash
+claude setup-token
+export CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...
+```
+
+`TEICH_CLAUDE_OAUTH_TOKEN` also works (and wins over `CLAUDE_CODE_OAUTH_TOKEN`), or set `agent.claude.oauth_token` in the config. There is no separate enable flag: subscription auth activates whenever the provider is `claude-code`, a token is resolvable, and no custom `api.base_url` is configured — Teich prints a notice when it is active. Teich then passes the token into each container as `CLAUDE_CODE_OAUTH_TOKEN` and passes **no** `ANTHROPIC_API_KEY`, because Claude Code silently prefers an API key over subscription credentials when both are present — which would bill the API instead of the subscription.
+
+Compared to Codex host auth this is much simpler, by design:
+
+- **No broker, no rotation.** The setup-token credential is durable, so containers can share it at any `max_concurrency`, and it does not disturb your interactive host login (no re-login needed afterward).
+- **Billing goes to the plan.** Usage counts against your subscription's rate-limit windows (5-hour/weekly), not pay-per-token API credits. Hitting the plan limit behaves like hitting it interactively.
+- **Subscription requests are paced by default.** Teich spaces Claude request starts 45 seconds apart across the whole runner, including follow-up turns, Teich retries, and concurrent workers. Set `agent.claude.subscription_request_delay_seconds: 0` to disable it or choose a different interval. API-key and custom-base-URL runs ignore this setting.
+- **Works from any host.** The token is just an env var — no credentials file to find (macOS keeps the interactive login in the Keychain, which containers can't read anyway).
+- **No custom base URL.** Subscription auth talks to the first-party Anthropic API. An explicit `api.base_url` (which includes the OpenRouter proxy path) keeps the API/proxy path; an ambient env token is ignored there (with a notice), and configuring `agent.claude.oauth_token` together with `api.base_url` is rejected.
+
+#### Effort, fallback models, and extended thinking
+
+```yaml
+agent:
+  provider: claude-code
+  claude:
+    subscription_request_delay_seconds: 45  # subscription auth only; 0 disables pacing
+    fallback_model: [sonnet, haiku]  # models Teich tries across batch retries
+    always_thinking: true            # alwaysThinkingEnabled in the container's settings.json
+    show_thinking_summaries: true    # showThinkingSummaries requests readable summaries
+    max_thinking_tokens: 31999       # MAX_THINKING_TOKENS env; 0 disables thinking where allowed
+
+model:
+  model: claude-opus-4-8
+  reasoning_effort: xhigh            # --effort: low | medium | high | xhigh | max (model-dependent)
+```
+
+How each setting reaches Claude Code:
+
+| Setting | Mechanism |
+|---|---|
+| `agent.claude.subscription_request_delay_seconds` | Minimum interval between subscription-auth request starts across the runner; ignored for API-key/custom-base-URL runs |
+| `model.reasoning_effort` | `--effort` CLI flag (shared field: Codex forwards it as `model_reasoning_effort`, Pi normalizes it) |
+| `agent.claude.fallback_model` | Batch mode switches `--model` across Teich retries, up to 3 deduplicated fallbacks; Claude's native `--fallback-model` is print-mode-only and is not sent to the interactive runner or Studio |
+| `agent.claude.always_thinking` | `alwaysThinkingEnabled` in the seeded `~/.claude/settings.json` (merged with the Langfuse hooks when tracing is on) |
+| `agent.claude.show_thinking_summaries` | `showThinkingSummaries` in the seeded settings; asks Claude Code for readable summaries instead of only opaque/redacted thinking where supported |
+| `agent.claude.max_thinking_tokens` | `MAX_THINKING_TOKENS` container env var |
+
+Batch generation and Studio both seed these settings into their Claude homes. Batch generation launches the normal interactive CLI inside a real PTY, watches the native transcript until every requested turn is complete, and then exits cleanly; this avoids the readable-summary suppression in Claude Code's non-interactive `-p` mode. `always_thinking` and `show_thinking_summaries` default to `true`; set either to `false` to opt out. The other model/thinking settings are optional passthroughs. Subscription pacing defaults to 45 seconds. Models with adaptive reasoning treat effort as the primary control and ignore nonzero fixed thinking budgets. Anthropic can still return `redacted_thinking` for safety reasons; Teich preserves that native block but cannot decrypt it.
+
+A complete runnable example is `examples/config.claude-code-thinking.yaml` in the Teich repo.
+
+### `hermes`
+
+Runs Hermes Agent with built-in toolsets:
+
+```text
+safe,terminal,file,skills,memory,session_search,delegation
+```
+
+Teich extracts Hermes `state.db` sessions into one JSONL file per native single-session export row. Each file contains one session object with embedded `messages`, matching the shape of Hermes' single-session export. Hermes' internal `system_prompt`, enabled toolsets, and configured tools remain metadata on each row. Delegated subagent sessions stay linked by `parent_session_id`.
+
+### `chat`
+
+Calls an OpenAI-compatible API directly and writes structured training rows instead of raw agent traces:
+
+```yaml
+agent:
+  provider: chat
+
+model:
+  model: gpt-4.1-mini
+
+api:
+  provider: openai
+  wire_api: responses
+```
+
+A single-turn generated line contains `messages`, `prompt`, optional `thinking`, `response`, and `model`. With follow-ups, `messages` is the authoritative conversation and contains alternating `user` and `assistant` turns; the row also includes `follow_up_prompts`, per-turn `responses`, and `model`, but omits the single-turn `prompt`, `thinking`, and `response` convenience columns.
+
+## Capture harness context
+
+Codex and Claude Code add substantial client-side instructions and tool schemas before a request reaches the model. Teich can capture that client-visible context with one preflight request to a local fake provider:
+
+```yaml
+capture_harness_context:
+  enabled: true
+  required: true
+  timeout_seconds: 45
+```
+
+The preflight uses the same installed harness, model, reasoning settings, developer instructions, MCP configuration, permission mode, and an empty isolated workspace. It supports Codex's Responses wire protocol and Claude Code's Anthropic Messages protocol. It sends dummy credentials only to a random authenticated local endpoint, does not contact the real provider, and does not consume API or subscription quota. Authentication headers, user messages, and arbitrary request metadata are never retained.
+
+Teich appends the normalized capture and its deterministic hash to every raw trace. `teich convert` exposes captured instructions as a top-level `system` field and adds request-visible tool declarations that were missing from the native trace without replacing trace-native schemas. Per-session context such as repository instructions, skills, hooks, MCP state, and recaps remains in the converted `messages` where the native trace recorded it.
+
+To inspect a capture without running a generation batch:
+
+```bash
+teich capture-context -c config.yaml -o harness-context.json
+```
+
+It captures only what the harness sends over the client-provider boundary. It cannot recover provider-side instructions, server-added policy, or hidden raw chain-of-thought that never reaches the client.
+
+## Local providers
+
+OpenAI-compatible local endpoints can be configured with environment variables:
+
+```bash
+export TEICH_PROVIDER=LMstudio
+export TEICH_MODEL=gemma-4
+export TEICH_BASE_URL=http://localhost:1234/v1
+export TEICH_API_KEY=llm
+
+teich generate -c config.yaml
+```
+
+This is useful for LM Studio, Ollama-compatible proxies, or local gateway services.
+
+## Outputs and publishing
+
+Provider outputs:
+
+- `codex` / `pi`: normalized copies of native agent session JSONL files in `output/`, workspace snapshots in `sandbox/`, and a dataset `README.md`
+- `claude-code`: native Claude Code transcript JSONL copied from `.claude/projects/...`, workspace snapshots in `sandbox/`, and a dataset `README.md`
+- `hermes`: generated runs use Hermes' native session export shape; extracted `state.db` sessions are staged as one JSONL file per native single-session export row, including delegated subagent sessions linked by `parent_session_id`
+- `cursor`: native `.cursor/projects/.../agent-transcripts/...` JSONL files are preserved when available, including MCP tool snapshots from the same project folder; recovered `state.vscdb` rows are staged as one Cursor-style session JSONL file per recovered session
+- `chat`: text-only JSONL training rows in `output/` and a dataset `README.md`
+
+`teich extract` writes provider-native or recovered session shapes to `data/` by default, then anonymizes the staged output in place before the upload prompt.
+
+Uploaded Hugging Face dataset artifacts include the generated JSONL, the dataset `README.md`, and `tools.json` when a dataset-level tool snapshot is too large to embed safely in the dataset card. Generated dataset cards are intentionally short: Teich attribution, counts, a bounded sample, format notes, tool-schema information, and links to the maintained training docs.
+
+Generation progress reports provider/model usage when Teich can retrieve it. For OpenRouter, Teich first queries the provider's generation stats API for native token and cost accounting, then falls back to harness-reported usage. If neither source is available, Teich prints `N/A`.
