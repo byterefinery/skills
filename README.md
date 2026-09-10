@@ -80,9 +80,11 @@ rm -f "$TMP"
 | No | Skill | Description |
 |----|-------|-------------|
 | 1 | git | Git version control. Use when the user mentions git, commits, branches, pushing, pulling, merging, rebasing, stashing, worktrees, submodules, or any version control task. Covers straightforward workflows (add/commit/push) and advanced topics. |
-| 2 | skman | Introduces the Agent Skills System — a standardized, lightweight, open format for extending AI agent capabilities with specialized knowledge and workflows. Use for scaffolding, validating, and inspecting agent skills (SKILL.md files and other skills' files and directories). |
-| 3 | webfetch | Fetches web pages as LLM-ready markdown. Use when the user wants to fetch, scrape, download, retrieve, grab, pull, or access any URL or webpage content. Defaults to Safari impersonation and AI-targeted markdown output optimized for LLM consumption. Falls back through browser → requests if needed. Supports --html, --file, --tool, --impersonate, --no-ai-targeted. Use this whenever the user asks to read a website, get page content, or fetch a URL. |
-| 4 | websearch | Searches DuckDuckGo and returns LLM-optimized markdown, JSON, or YAML. Use this skill whenever the user wants to search the web, look up information online, find URLs, do web search, research a topic, or needs current/web-based answers. Uses Safari TLS impersonation and AI-targeted sanitization. Output can be markdown (default), --json, --yaml. |
+| 2 | next | Develops Next.js 16 (App Router) applications using the 16.3.4 docs as the source of truth. Use when creating or editing Next.js projects — new apps via create-next-app, App Router pages and layouts, server and client components, Cache Components caching (use cache, cacheLife, cacheTag, revalidateTag, updateTag), proxy and route handlers, or upgrading from version 15 to 16. Covers breaking changes, codemods, and AI agent verification workflows. |
+| 3 | react | React 19 (verified against v19.3.0) for building user interfaces with components, hooks, Actions, and React Server Components. Use when writing, reviewing, or refactoring React or JSX code, RSC server components and server actions, DOM or server rendering, or configuring the React Compiler. |
+| 4 | skman | Introduces the Agent Skills System — a standardized, lightweight, open format for extending AI agent capabilities with specialized knowledge and workflows. Use for scaffolding, validating, and inspecting agent skills (SKILL.md files and other skills' files and directories). |
+| 5 | webfetch | Fetches web pages as LLM-ready markdown. Use when the user wants to fetch, scrape, download, retrieve, grab, pull, or access any URL or webpage content. Defaults to Safari impersonation and AI-targeted markdown output optimized for LLM consumption. Falls back through browser → requests if needed. Supports --html, --file, --tool, --impersonate, --no-ai-targeted. Use this whenever the user asks to read a website, get page content, or fetch a URL. |
+| 6 | websearch | Searches DuckDuckGo and returns LLM-optimized markdown, JSON, or YAML. Use this skill whenever the user wants to search the web, look up information online, find URLs, do web search, research a topic, or needs current/web-based answers. Uses Safari TLS impersonation and AI-targeted sanitization. Output can be markdown (default), --json, --yaml. |
 <!-- /SKMAN:TABLE:core -->
 
 <!-- SKMAN:TABLE:byterefinery -->
@@ -294,7 +296,7 @@ rm -f "$TMP"
 
 | Category | Skills |
 |----------|--------|
-| core | 4 |
+| core | 6 |
 | byterefinery | 13 |
 | general | 22 |
 | go | 1 |
@@ -302,5 +304,5 @@ rm -f "$TMP"
 | models | 15 |
 | python | 66 |
 
-- **Total Skills**: 166
+- **Total Skills**: 168
 <!-- /SKMAN:STATS -->
