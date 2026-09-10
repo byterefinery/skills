@@ -1,8 +1,8 @@
 ---
 name: next
-description: Develops Next.js 16 (App Router) applications using the 16.3.4 docs as the source of truth. Use when creating or editing Next.js projects — new apps via create-next-app, App Router pages and layouts, server and client components, Cache Components caching (use cache, cacheLife, cacheTag, revalidateTag, updateTag), proxy and route handlers, or upgrading from version 15 to 16. Covers breaking changes, codemods, and AI agent verification workflows.
+description: Develops Next.js 15 (App Router and Pages Router) applications using the 15.5.25 docs as the source of truth. Use when creating or editing Next.js projects — scaffolding with create-next-app, App Router layouts and dynamic segments, server and client components, server actions, route handlers and middleware, caching and revalidation, partial prerendering, metadata and OG images, next/image and next/font, upgrading a project to version 15, or maintaining a Pages Router codebase.
 license: MIT
-compatibility: Node.js 20.9+ (Node 18 unsupported); TypeScript 5.1+; Turbopack is the default bundler; bundled docs at node_modules/next/dist/docs/ on 16.2+
+compatibility: Node.js 18.18+; React 19; works with npm, pnpm, yarn, or bun
 metadata:
   tags:
     - web
@@ -15,64 +15,79 @@ metadata:
 
 ## Overview
 
-Next.js 16 is a React framework for full-stack web apps, built around the App Router, React Server Components, and Turbopack. This skill targets version 16.3.4 and the App Router.
+Next.js 15 is a React framework for full-stack web applications, built on React Server Components, file-system routing, and Rust-based build tooling (Turbopack). This skill targets version 15.5.25.
 
-Version 16 is a major rework, not a patch-level change. The four pillars to internalize before touching any 16.x codebase:
+Next.js ships two routers. New work should use the **App Router** (`app/` directory) — it supports Server Components, streaming, Server Actions, and Partial Prerendering. The **Pages Router** (`pages/` directory) remains fully supported for existing projects but is in maintenance mode. Both can coexist in one project.
 
-1. **Turbopack is the default** bundler for `next dev` and `next build`; Webpack is opt-out.
-2. **All Request APIs are async only** — `params`, `searchParams`, `cookies()`, `headers()`, `draftMode()` are Promises; the sync compatibility from 15 is gone.
-3. **`middleware` is deprecated and renamed to `proxy`** (Node.js runtime only; `edge` stays on the old name).
-4. **Cache Components** (`cacheComponents: true`) is the new caching model — Partial Prerendering is its default behavior, `use cache` + `cacheLife` replace route segment configs and `unstable_cache`, and data fetching is dynamic by default.
+Version 15 is not a cosmetic release. The changes that most often break code or assumptions:
 
-Next.js 16.x ships version-matched docs inside the `next` package at `node_modules/next/dist/docs/` (since 16.2). In any 16.x project, treat those docs as the source of truth — the API surface may differ from your training data. Read the relevant guide there before writing code.
+1. **Async Request APIs** — `params` and `searchParams` props, and the `cookies()`, `headers()`, and `draftMode()` functions, are now `Promise`-based. Synchronous access still works in 15 but is deprecated and will be removed in 16.
+2. **React 19** — the App Router bundles React 19 (canary-based) built-in; `react`/`react-dom` 19 is the minimum for the Pages Router. React 19 renamed `useFormState` to `useActionState`.
+3. **`fetch` is not cached by default** — server-side `fetch` and Route Handler `GET` methods no longer use the Data Cache unless you opt in with `{ cache: 'force-cache' }` or a `fetchCache` segment config.
+4. **Turbopack** — stable for `next dev` (`--turbopack` flag, the default in new apps), still beta for `next build --turbopack`.
+5. **Client-side Router Cache** — page segments are no longer reused between navigations (layouts and loading states still are), fixing stale-content bugs but changing what you can expect after `<Link>` navigation.
 
 ## Usage
 
-Scaffold a new app:
+Scaffold a new app (defaults: TypeScript, ESLint, Tailwind, App Router, Turbopack, `@/*` alias):
 
 ```bash
-npx create-next-app@latest my-app --yes   # TypeScript, ESLint, Tailwind, App Router, Turbopack, AGENTS.md
+npx create-next-app@15 my-app --yes   # pin major 15 for a 15.x project
 cd my-app
-npm run dev                               # http://localhost:3000
+npm run dev                            # http://localhost:3000
 ```
 
 Common workflows, by reference:
 
-- **Upgrade 15 to 16** — `npx @next/codemod@latest upgrade latest`, then work through [01-upgrade-to-v16](references/01-upgrade-to-v16.md).
-- **New route or component** — follow the structure and file conventions in [02-app-router](references/02-app-router.md) and [03-server-client-data](references/03-server-client-data.md).
-- **Caching and revalidation** — decide first whether the project uses `cacheComponents`; the two models are not interchangeable. See [04-caching](references/04-caching.md).
-- **Auth, redirects, request interception** — prefer `next.config` redirects first, then `proxy.ts` in [05-proxy-route-handlers](references/05-proxy-route-handlers.md).
-- **Build, typecheck, diagnose** — CLI commands and config options in [06-cli-config](references/06-cli-config.md).
-- **Verify changes as an agent** — the `next dev` + MCP + browser loop and official Next.js skills in [07-agent-workflows](references/07-agent-workflows.md).
-- **Images, fonts, CSS, metadata** — v16 image security changes and asset conventions in [08-assets-media](references/08-assets-media.md).
+- **New route or component** — file conventions and structure in [01-app-router](references/01-app-router.md).
+- **Components and data fetching** — Server vs Client Components, streaming, `use` hook in [02-server-client-components](references/02-server-client-components.md).
+- **Mutations and forms** — Server Actions, `useActionState`, revalidation, redirects in [03-server-actions](references/03-server-actions.md).
+- **Caching and revalidation** — the four caches, fetch options, route segment config, PPR in [04-caching](references/04-caching.md).
+- **APIs and request interception** — Route Handlers and middleware in [05-route-handlers-middleware](references/05-route-handlers-middleware.md).
+- **SEO and sharing** — metadata, `generateMetadata`, OG images, robots, sitemap in [06-metadata-og](references/06-metadata-og.md).
+- **Images, fonts, CSS** — `next/image`, `next/font`, styling conventions in [07-assets](references/07-assets.md).
+- **Legacy `pages/` projects** — data fetching methods and API routes in [08-pages-router](references/08-pages-router.md).
+- **Upgrading to 15 or migrating routers** — breaking changes, codemods, migration steps in [09-migration-upgrading](references/09-migration-upgrading.md).
+- **Build, deploy, diagnose** — CLI commands, `next.config`, environment variables in [10-cli-config](references/10-cli-config.md).
 
-Before editing an existing Next.js 16 project, read its `AGENTS.md` if present — it points at the version-matched docs for that exact install.
+Decision guidance when touching an existing project:
+
+- Check the `next` version in `package.json` first. This skill is pinned to 15.5.25; a project on 14 or 16 needs its own docs as the source of truth (15→16 is a major rework, not a drop-in).
+- In App Router code, always `await params`/`searchParams` and treat `cookies()`/`headers()` as async, even though 15 tolerates sync access.
+- Verify what a route actually renders (static vs dynamic) via the `next build` output table (`○` static, `ƒ` dynamic) rather than assuming from the code.
 
 ## Gotchas
 
-- **This is NOT the Next.js you know.** 16 changed APIs, conventions, and file structure. Do not rely on training-data patterns; read the bundled docs in `node_modules/next/dist/docs/` (resolve the path from the `AGENTS.md` managed block) before writing code.
-- **Request APIs are Promises now.** `const { slug } = params` at a page top is a 15-era bug; it must be `await params`. Same for `searchParams`, `cookies()`, `headers()`, `draftMode()`. Run `npx @next/codemod@latest next-async-request-api .` on legacy code.
-- **Turbopack by default, and it guards you.** A project with a custom `webpack` config will **fail** `next build` to prevent silent misconfiguration. Use `--webpack` to opt out, `--turbopack` to force Turbopack and ignore the webpack config, or migrate the config. Drop the now-unneeded `--turbopack` from package.json scripts.
-- **`middleware.ts` is deprecated — rename to `proxy.ts`.** The export function must be named `proxy` (default export still works). `proxy` runs on the Node.js runtime only and the `runtime` option cannot be set; if you need the `edge` runtime, keep using `middleware`. Config flags follow the rename (e.g., `skipProxyUrlNormalize`).
-- **`revalidateTag` now requires a second argument** — a `cacheLife` profile (e.g., `revalidateTag('posts', 'max')`). The single-argument form is deprecated and is a TypeScript error. For read-your-writes from a Server Action, use `updateTag` instead.
-- **`cacheComponents` invalidates the old caching configs.** Once enabled, `dynamic`, `revalidate`, and `fetchCache` route segment exports error, and `dynamicParams` fails the build. Everything is dynamic by default; opt *in* to caching per function/component with `use cache`.
-- **Under Cache Components, `generateStaticParams` must return at least one param** — an empty array errors (it previously meant "render everything at runtime"). Await `params` inside a `<Suspense>` boundary if you want the static shell, not at the top of the component.
-- **Parallel route slots require an explicit `default.js`** in 16 — builds fail without them. Add one that calls `notFound()` or returns `null`.
-- **`next lint` is removed.** Run ESLint (flat config is the default for `@next/eslint-plugin-next`) or Biome directly; `next build` no longer lints. The `eslint` key in next.config is gone.
-- **`next/image` got stricter.** Local image sources with query strings (`/img/x?v=1`) now require `images.localPatterns.search`. Defaults changed: `minimumCacheTTL` 60s → 4h, `imageSizes` no longer includes 16, `qualities` is `[75]`, `maximumRedirects` 3, and local-IP optimization is blocked unless `dangerouslyAllowLocalIP`.
-- **Build output no longer shows `size` / `First Load JS`** — the metrics were removed as unreliable under RSC. Measure with Lighthouse or Vercel Analytics instead.
-- **`process.argv` no longer contains `'dev'` during `next dev`** — the config is loaded once now, not twice. Check `NODE_ENV` or the `phase` instead.
-- **Node.js 20.9+ is the minimum** (18 is unsupported), TypeScript 5.1+, React 19.2 is bundled for the App Router.
-- **UI state survives navigation under Cache Components.** Next.js keeps hidden routes mounted via React `<Activity>`; code that relied on unmount to reset dropdowns, dialogs, or forms needs explicit reset logic.
-- **`next dev` and `next build` can run concurrently** (dev outputs to `.next/dev`), but a lockfile blocks two dev or two build instances on the same project — a second `next dev` prints the running server's URL and PID.
+- **`params` and `searchParams` are Promises in the App Router.** `const { slug } = params` is a 14-era bug; use `const { slug } = await params` in Server Components, or `use(params)` in Client Components. Sync access still works in 15 but is deprecated and errors in 16.
+- **`fetch` is uncached by default since 15.** A `fetch` in a Server Component or Route Handler with no `cache` option hits the source on every request in a dynamic route, and the route itself becomes dynamic. Cache explicitly with `{ cache: 'force-cache', next: { revalidate: 3600 } }`, or flip the whole segment with `export const fetchCache = 'default-cache'`.
+- **Conflicting fetch options are silently ignored.** `{ revalidate: 3600, cache: 'no-store' }` on one request means *neither* is applied, with a warning in dev. Pick one semantics per request.
+- **Pages are never cached in development.** `next dev` always renders on demand, and the HMR fetch cache (`serverComponentsHmrCache`) can serve stale data between edits. Don't debug caching behavior against the dev server — run `next build && next start`.
+- **Route Handlers have no cache by default; only `GET` can opt in.** `export const dynamic = 'force-static'` (or `revalidate`) applies to `GET` only; other verbs are always dynamic.
+- **`route.ts` and `page.ts` cannot share a directory.** Each file claims every HTTP verb for its path; put APIs under `app/api/...` or a sibling folder. Route Handlers also skip layouts and client-side navigation.
+- **`useSearchParams` requires a `<Suspense>` boundary** in a statically rendered route, or the whole component tree above the boundary is force-rendered on the client. Wrap the component that reads search params, not the whole page.
+- **`redirect()` throws.** Code after `redirect(...)` in a Server Action never runs; call `revalidatePath`/`revalidateTag` *before* it.
+- **`useFormState` is deprecated** — React 19 renamed it to `useActionState` (also gains a `pending` property). Use the new name in new code.
+- **Middleware fetches are never cached** — `cache`, `next.revalidate`, and `next.tags` options have no effect inside middleware. Also avoid slow data fetching and session management there; it runs on the Edge runtime and only one `middleware.ts` per project is allowed.
+- **`revalidate` values must be statically analyzable.** `revalidate = 60 * 10` is invalid; write `revalidate = 600`. The lowest `revalidate` across a route's layouts and pages wins for the whole route.
+- **Root layout is mandatory** — `app/layout.tsx` must contain the `<html>` and `<body>` tags. `next dev` auto-creates it if missing, but builds expect it.
+- **Parallel routes need a `default.js` fallback** in every `@slot` folder without a matching route, or the build fails.
+- **Partial Prerendering is experimental and opt-in in 15.5** — `experimental.ppr: 'incremental'` in config plus `export const experimental_ppr = true` on a route segment; without both, PPR does nothing.
+- **`next lint` is deprecated in 15** (removed in 16) — prefer calling ESLint directly. `next build` still lints unless `--no-lint`.
+- **`@next/font` is gone** — the package was removed in 15; import from `next/font/google` and `next/font/local`.
+- **`NextRequest.geo` and `.ip` were removed in 15** — the hosting provider supplies those; on Vercel use `@vercel/functions`.
+- **Client router cache no longer reuses page segments in 15.** State and effects in page components re-run on `<Link>` navigation (layouts and `loading` states are still reused). If old code depended on pages sticking around, that assumption is now wrong.
+- **In `pages/` router, `getStaticProps` props are public** — everything returned from `getStaticProps` ships to the client for hydration. Keep secrets server-side.
+- **`output: 'export'` disables SSR, API routes, and dynamic rendering** — all routes must be statically renderable; dynamic routes need complete `generateStaticParams` (or `getStaticPaths` in Pages Router).
 
 ## References
 
-- [01-upgrade-to-v16](references/01-upgrade-to-v16.md) — version 15 → 16 migration; codemods, breaking changes, removed features
-- [02-app-router](references/02-app-router.md) — project structure, file conventions, layouts and pages, dynamic routes, navigation, error handling
-- [03-server-client-data](references/03-server-client-data.md) — server and client components, data fetching, mutations, Server Actions
-- [04-caching](references/04-caching.md) — Cache Components; use cache, cacheLife, cacheTag, revalidation, static shell, adoption workflow
-- [05-proxy-route-handlers](references/05-proxy-route-handlers.md) — proxy.ts (middleware replacement), matchers, route handlers, redirects and rewrites
-- [06-cli-config](references/06-cli-config.md) — next CLI commands and options, next.config.ts, Turbopack options, environment variables, typegen
-- [07-agent-workflows](references/07-agent-workflows.md) — AGENTS.md, bundled docs, MCP server, dev loop, official Next.js skills, error-driven fixes
-- [08-assets-media](references/08-assets-media.md) — next/image (v16 security changes), fonts, CSS, metadata and OpenGraph images
+- [01-app-router](references/01-app-router.md) — file conventions, route groups, dynamic segments, `generateStaticParams`, parallel and intercepting routes, navigation
+- [02-server-client-components](references/02-server-client-components.md) — RSC model, `use client`, data fetching on each side, streaming, third-party libraries, env hygiene
+- [03-server-actions](references/03-server-actions.md) — `'use server'`, forms, `useActionState`, `useOptimistic`, revalidation, redirects, client navigation hooks
+- [04-caching](references/04-caching.md) — static vs dynamic rendering, the four caches, fetch options, route segment config, draft mode, PPR, static export
+- [05-route-handlers-middleware](references/05-route-handlers-middleware.md) — Route Handlers, middleware, matchers, Edge runtime, config-based redirects/rewrites/headers
+- [06-metadata-og](references/06-metadata-og.md) — `metadata`/`generateMetadata`, viewport, file conventions for icons and OG images, `imageResponse`
+- [07-assets](references/07-assets.md) — `next/image`, `next/font`, CSS, public folder
+- [08-pages-router](references/08-pages-router.md) — `pages/` routing, `_app`/`_document`, `getStaticProps`/`getServerSideProps`, API routes, preview mode
+- [09-migration-upgrading](references/09-migration-upgrading.md) — 14→15 breaking changes and codemods, Pages→App migration, from Vite/CRA
+- [10-cli-config](references/10-cli-config.md) — `create-next-app` and `next` CLI, `next.config.js` options, environment variables
