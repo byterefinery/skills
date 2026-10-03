@@ -123,6 +123,8 @@ Follow these steps in order:
      ```
      Each line: link to the file, a dash, brief topic summary. Local `references/NN-topic.md` files and external URLs both work.
 
+   **Ground every factual claim in source material.** Every command, option, flag, workflow step, or gotcha must be traceable to a source you actually read — a cloned repo, user-provided docs, or the user's own instructions. Do not write usage examples or behavioral claims from memory. If the source does not document something, omit it or mark it as unverified (e.g., "Verify in `--help` output"). This applies to all sections: Overview, Usage, Gotchas, and reference files.
+
 4. **Create scripts** — only when the user explicitly requests them. Never assume a language — ask or wait for a suggestion. Conventions (default `scripts/<name>.py` with PEP 723 shebang; shell mode `scripts/<name>.sh` + `_<name>.py` for no-PyPI-deps) are in Scripting below. Scripts are **executed**, not loaded into context; include `--help` at every level. Scaffold with `--with-scripts`.
 
 5. **Validate** — run the validation script:
@@ -147,9 +149,9 @@ Never fetch individual files over the network (slow and rate-limited); a single 
 Then study the repo in this order. Documentation is the primary source; source code is the fallback — documented intent maps directly onto skill content and costs far fewer tokens than raw code.
 
 1. **Look for documentation first** — before touching source code, find `.md`, `.rst`, and `.txt` files in doc-like directories (`docs/`, `doc/`, `documentation/`, `manual/`, …) and root-level files (`README*`, `INSTALL*`, `CHANGELOG*`, `CONTRIBUTING*`). Exact `find` commands in [02-repo-analysis](references/02-repo-analysis.md).
-2. **Docs found** — mine the doc tree for the skill body: what it does, usage, commands and options, configuration, workflows, known pitfalls. Open source code only to verify specifics the docs leave ambiguous (exact flags, version behavior).
-3. **No docs** — analyze the whole repo instead: entry points, CLI/argument definitions, public API, tests, config schemas. Extract the same material from the code itself.
-4. **Write and validate** — follow Creating a New Skill above (naming, frontmatter, body), then run `skman.py validate <path-to-skill>`.
+2. **Docs found** — mine the doc tree for the skill body: what it does, usage, commands and options, configuration, workflows, known pitfalls. Open source code only to verify specifics the docs leave ambiguous (exact flags, version behavior). Every detail you write into the skill must be traceable to a doc page or source file you actually read — do not fill gaps from prior knowledge of the tool.
+3. **No docs** — analyze the whole repo instead: entry points, CLI/argument definitions, public API, tests, config schemas. Extract the same material from the code itself. Every extracted detail (flag name, default value, option syntax) must come from the code you read — not from prior knowledge of the tool.
+4. **Write and validate** — follow Creating a New Skill above (naming, frontmatter, body), then run `skman.py validate <path-to-skill>`. Before writing, confirm you have source-backed material for each section; if a section would contain only unverifiable claims, omit it rather than guess.
 
 ## Editing a Skill
 
@@ -229,6 +231,7 @@ SLMs need more explicit guidance and numbered steps; LLMs prefer concise instruc
 - **Frontmatter `name` must match the directory basename exactly** — `demo-skill-2-4-1/` requires `name: demo-skill-2-4-1`; the validator warns on mismatch. Fix by renaming the directory or correcting the frontmatter.
 - **H1 heading must match `# <name>` or `# <base> <version>`** — the validator errors on mismatch. For `demo-skill-2-4-1/` the H1 must be `# demo-skill 2.4.1` (version uses dots, not hyphens); for `skman/` it is `# skman`.
 - **PEP 723 block is mandatory for Python scripts** — every Python script must include the `# /// script ... # ///` metadata block, at the top of the file after the shebang. `uv run` depends on it to resolve dependencies; without it, the script runs with no dependency management.
+- **Ground all skill content in source material — do not hallucinate** — every command, flag, option, and gotcha must be traceable to a source you actually read. Do not write usage examples or behavioral claims from prior knowledge. If a detail cannot be verified, omit it or mark it as unverified. See Grounding in step 3 of Creating a New Skill.
 - **Clone repos locally before studying them** — when creating or updating a skill from a repo (see Creating a skill from a repository for recognition), clone it into a temporary directory first and read files from the local copy. Fetching individual files over the network is expensive in both time and rate limits; a single `git clone` gives you the full tree instantly. Clean up the temp directory after analysis.
 
 ## References

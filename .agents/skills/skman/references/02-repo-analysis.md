@@ -60,6 +60,8 @@ Read the doc tree and extract, mapping directly onto skill sections:
 
 Open source code only to verify specifics the docs leave ambiguous: exact flag names, version-dependent behavior, undocumented defaults.
 
+**Grounding rule:** every command, flag, option, or configuration detail written into the skill must come from a doc page or source file you actually read in this session. Do not fill gaps from prior knowledge of the tool — if a detail is not in the docs or code you examined, omit it or flag it as unverified.
+
 ## 4. Whole-Repo Analysis (no docs)
 
 If step 2 finds nothing useful, derive everything from source, in this order:
@@ -71,6 +73,8 @@ If step 2 finds nothing useful, derive everything from source, in this order:
 5. **Packaging** — `pyproject.toml`, `package.json`, `Cargo.toml` reveal entry points, dependencies, and version
 
 Extract the same material as from docs: what it does, how to use it, options, traps.
+
+**Grounding rule:** every flag name, default value, option syntax, and behavioral claim in the skill must be traceable to a specific file you read in the repo. Do not write details from prior knowledge of the tool — the code in front of you is the only source of truth for the current version.
 
 ## 5. Clean Up
 
