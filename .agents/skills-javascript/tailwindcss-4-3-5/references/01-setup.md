@@ -102,3 +102,37 @@ npx @tailwindcss/upgrade
 - `./index.css`, `./preflight.css`, `./theme.css`, `./utilities.css` (also resolvable without the `.css` suffix)
 - `./plugin` — the `plugin()` helper for JS plugins (v3-compatible API)
 - `./colors`, `./defaultTheme`, `./lib/util/flattenColorPalette` — v3 compatibility exports
+## Next.js
+
+### App Router
+
+```js
+// next.config.js
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  experimental: {
+    turbo: {
+      rules: {
+        '*.css': {
+          loaders: ['@tailwindcss/webpack'],
+        },
+      },
+    },
+  },
+}
+module.exports = nextConfig
+```
+
+### CSS Entry
+
+```css
+/* app/globals.css */
+@import "tailwindcss";
+```
+
+## Performance
+
+- v4 uses a Rust engine for significantly faster builds
+- No JIT compilation step — utilities are generated on-demand during CSS parsing
+- Incremental builds are faster with file watchers
+- Use `@source` to limit content scanning to relevant directories

@@ -71,6 +71,40 @@ export const useStore = defineStore('main', {
 })
 ```
 
+## Writable Getters
+
+Getters can be made writable using a `computed` with a setter. This works in both styles:
+
+### Option Store
+
+```js
+getters: {
+  fullName: {
+    get: (state) => state.firstName + ' ' + state.lastName,
+    set: (value) => {
+      const [firstName, lastName] = value.split(' ')
+      state.firstName = firstName
+      state.lastName = lastName
+    },
+  },
+}
+```
+
+### Setup Store
+
+```js
+const fullName = computed({
+  get: () => firstName.value + ' ' + lastName.value,
+  set: (value) => {
+    const [firstNameVal, lastNameVal] = value.split(' ')
+    firstName.value = firstNameVal
+    lastName.value = lastNameVal
+  },
+})
+```
+
+Writable getters appear as writable properties on the store and work with `storeToRefs()`.
+
 ## Options API
 
 Same `mapState()` helper as for state — getters are mapped as readonly computed properties. `mapGetters()` exists only for migration convenience; prefer `mapState()`.

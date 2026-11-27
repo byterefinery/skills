@@ -40,6 +40,142 @@ The build works without configuring these, but configuring them is **strongly re
 
 - **`vue.cjs(.prod).js`** — for Node.js SSR via `require()` (e.g. webpack `target: 'node'` with `vue` externalized). Dev/prod files are pre-built; the right one is picked by `process.env.NODE_ENV`.
 
+## Import Maps
+
+Teach the browser where to resolve bare specifiers like `'vue'` using [Import Maps](https://caniuse.com/import-maps).
+
+```html
+<script type="importmap">
+  {
+    "imports": {
+      "vue": "https://unpkg.com/vue@3/dist/vue.esm-browser.js"
+    }
+  }
+</script>
+
+<div id="app">{{ message }}</div>
+
+<script type="module">
+  import { createApp, ref } from 'vue'
+
+  createApp({
+    setup() {
+      const message = ref('Hello Vue!')
+      return { message }
+    }
+  }).mount('#app')
+</script>
+```
+
+Add additional entries for other dependencies — ensure they point to ES module builds of those libraries.
+
+**Browser support**: Import Maps is supported in modern browsers. Safari 16.4+ required.
+
+## Splitting Modules
+
+Split code into separate `.js` files for manageability.
+
+```html [index.html]
+<div id="app"></div>
+
+<script type="module">
+  import { createApp } from 'vue'
+  import MyComponent from './my-component.js'
+
+  createApp(MyComponent).mount('#app')
+</script>
+```
+
+```js [my-component.js]
+import { ref } from 'vue'
+
+export default {
+  setup() {
+    const count = ref(0)
+    return { count }
+  },
+  template: `<div>Count: {{ count }}</div>`
+}
+```
+
+The template is an inlined JavaScript string that Vue compiles at runtime. For VS Code syntax highlighting, install the `es6-string-html` extension and prefix strings with `/*html*/`.
+
+## Options API without Build
+
+```js
+export default {
+  data() {
+    return { count: 0 }
+  },
+  methods: {
+    increment() {
+      this.count++
+    }
+  },
+  mounted() {
+    console.log(`Initial count: ${this.count}`)
+  },
+  template: `<button @click="increment">Count: {{ count }}</button>`
+}
+```
+
+Or target an in-DOM template element:
+
+```js
+export default {
+  data() { return { count: 0 } },
+  template: '#my-template'
+}
+```
+
+```html
+<template id="my-template">
+  <button @click="count++">Count: {{ count }}</button>
+</template>
+```
+
+## Production Deployment
+
+The examples above use development builds. For production:
+
+- Use the production build by replacing `.global.js` with `.global.prod.js` or `.esm-browser.js` with `.esm-browser.prod.js`
+- Or use URL hash: `vue.global.js` → `vue.global.prod.js`
+- Production builds are smaller and strip dev-only warnings
+
+```html
+<!-- Production -->
+<script src="https://unpkg.com/vue@3.5.46/dist/vue.global.prod.js"></script>
+```
+
+For ES module production:
+
+```html
+<script type="importmap">
+  {
+    "imports": {
+      "vue": "https://unpkg.com/vue@3.5.46/dist/vue.esm-browser.prod.js"
+    }
+  }
+</script>
+```
+
+## Local HTTP Server
+
+ES modules require `http://` protocol — they don't work over `file://`. Serve your files with a local HTTP server:
+
+```bash
+# From the directory containing index.html
+npx serve
+# or
+npx vite serve
+# or any static file server
+```
+
+This is required whenever you use `<script type="module">` with local imports.
+
+## Alternative: Petite Vue
+
+For progressive enhancement of static HTML (similar to jQuery or Alpine.js use cases), consider [petite-vue](https://github.com/vuejs/petite-vue) — a 6 kB subset of Vue optimized for no-build-step scenarios. It uses `v-init` to activate and works with attribute-style bindings.
 ## Patterns from the official examples
 
 `packages/vue/examples/` ships six demos in **classic** (Options API) and **composition** (Composition API) variants: `commits`, `grid`, `markdown`, `svg`, `todomvc`, `tree`, plus `transition/list` and `transition/modal`. All of them:

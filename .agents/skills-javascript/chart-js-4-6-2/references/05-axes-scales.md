@@ -27,6 +27,22 @@ Namespace `options.scales[scaleId]`:
 
 Cartesian-specific: `bounds` (`'ticks'`), `clip` (true), `position` (top/left/bottom/right), `stack`, `stackWeight` (1), `axis` (`'x'`/`'y'`), `offset` (false; true by default for bar charts — extra space at edges), `title` (scale title object; v3 renamed from `scaleLabel`).
 
+## Grid Options (verified against v4.6.2 `core.scale.defaults.js`)
+
+| Option | Default | Description |
+|---|---|---|
+| `grid.display` | true | Draw grid lines |
+| `grid.lineWidth` | 1 | Grid line width (px) |
+| `grid.color` | global `borderColor` | Grid line color (routed to the chart's default `borderColor`) |
+| `grid.drawOnChartArea` | true | Draw lines in the chart area |
+| `grid.drawTicks` | true | Draw tick marks |
+| `grid.tickLength` | 8 | Tick length (px) |
+| `grid.tickWidth` | `lineWidth` | Tick width (px) |
+| `grid.tickColor` | `color` | Tick color |
+| `grid.offset` | false | Offset grid lines (bar charts) |
+
+Related scale-level options from the same defaults: `offset` (false — offset the whole scale, used by bars), `bounds` (`'ticks'` — `'data'` keeps data fully visible, `'ticks'` keeps ticks fully visible), `clip` (true), `grace` (0), `reverse` (false), `beginAtZero` (false). Axis border (v4): `border.display` (true), `border.dash`, `border.dashOffset`, `border.width` (1) — see [10-migration](10-migration.md) for the v3→v4 rename from `grid.border*`.
+
 ## Common Tick Options
 
 Namespace `options.scales[scaleId].ticks`:

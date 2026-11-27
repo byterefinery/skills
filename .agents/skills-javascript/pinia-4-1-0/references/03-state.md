@@ -6,6 +6,8 @@
 - Mutating with $patch
 - Replacing the state
 - Subscribing to state (flush timing, detaching)
+- Disposing a store ($dispose)
+- Disposing the whole pinia (disposePinia)
 - Options API helpers
 
 State is defined as a **function returning the initial state** — this is what lets Pinia work on both server and client.
@@ -119,6 +121,30 @@ someStore.$subscribe(callback, { detached: true })
 ```
 
 You can also watch the whole pinia state with one `watch(pinia.state, cb, { deep: true })`.
+
+## Disposing a store ($dispose)
+
+`$dispose()` stops the store's effect scope, clears subscriptions and action listeners, and removes the store from the registry:
+
+```js
+counter.$dispose()
+```
+
+After disposal:
+- The store's effect scope is stopped
+- All `$subscribe` and `$onAction` callbacks are cleared
+- The store is removed from `pinia._s`
+- The state remains in `pinia.state.value` (delete manually if needed)
+
+If the store is used again after disposal, it will be recreated. If you want to also delete the persisted state:
+
+```js
+delete pinia.state.value[counter.$id]
+```
+
+## Disposing the whole pinia (disposePinia)
+
+`disposePinia(pinia)` (exported from 'pinia' in 4.1.0) destroys the entire pinia instance: every store is disposed (effect scopes stopped), all subscriptions and action listeners are cleared, and all state is removed — the superset of calling `$dispose()` on each store. Mainly useful in tests, to tear down the pinia created with `setActivePinia(createPinia())` between test runs.
 
 ## Options API helpers
 

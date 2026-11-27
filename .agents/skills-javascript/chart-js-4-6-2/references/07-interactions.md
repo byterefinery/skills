@@ -32,6 +32,36 @@ Plugin events can be further restricted per plugin, e.g. `options.plugins.toolti
 - **x** — all items intersecting on the X coordinate only (vertical cursor; cartesian charts)
 - **y** — all items intersecting on the Y coordinate only (horizontal cursor; cartesian charts)
 
+## Hover Configuration
+
+Namespace `options.hover` — same properties as `options.interaction` (`mode`, `intersect`, `axis`) but only affects hover behavior, leaving tooltip on the interaction defaults:
+
+```js
+options: {
+  interaction: { mode: 'nearest' },  // default interaction
+  hover: { mode: 'dataset' },        // hover highlights entire dataset
+  plugins: {
+    tooltip: { mode: 'index' }       // tooltip shows all at same index
+  }
+}
+```
+
+## Active Elements
+
+Get and set the hovered/active elements programmatically (e.g. from a plugin):
+
+```js
+// Set active elements (array of {datasetIndex, index}, plus event position)
+chart.setActiveElements([{ datasetIndex: 0, index: 2 }], { x: 100, y: 150 });
+chart.update();
+
+// Clear active elements
+chart.setActiveElements([], { x: 0, y: 0 });
+chart.update();
+```
+
+Read the current ones via `chart.getActiveElements()` (or from `onHover`/`onEvent` args, and in plugin hooks via `args.activeElements`).
+
 ## Converting Events to Data Values
 
 ```js

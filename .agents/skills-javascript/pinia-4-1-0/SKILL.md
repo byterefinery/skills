@@ -120,3 +120,4 @@ export const useCounterStore = defineStore('counter', () => {
 - [08-ssr-nuxt](references/08-ssr-nuxt.md) — SSR hydration, devalue, Nuxt module
 - [09-testing](references/09-testing.md) — unit tests, @pinia/testing, stubbing actions
 - [10-options-api-hmr](references/10-options-api-hmr.md) — mapStores/mapState/mapActions, setMapStoreSuffix, HMR
+- [11-build-less](references/11-build-less.md) — build-less browser usage: IIFE, ESM import maps, module splitting, production deployment, CDN

@@ -97,6 +97,119 @@ Wrap class instances and other non-reactive objects with `markRaw()` before atta
 
 Define extra options in `defineStore()` and consume them in a plugin — e.g. a `debounce` option mapping action names to milliseconds. The plugin returns a replacement object to override actions (e.g. with a debounced version). With setup stores the custom options are the **third argument** to `defineStore(id, setupFn, options)`.
 
+## Plugin Ordering
+
+Plugins are applied in registration order. Later plugins can override properties added by earlier plugins:
+
+```js
+pinia.use(pluginA)  // adds $meta
+pinia.use(pluginB)  // can override $meta
+```
+
+Plugins registered before `app.use(pinia)` are queued and applied after installation:
+
+```js
+const pinia = createPinia()
+pinia.use(pluginA)  // queued
+app.use(pinia)      // plugins applied here
+pinia.use(pluginC)  // applied immediately
+```
+
+## Devtools Plugin
+
+Pinia includes a built-in devtools plugin that integrates with Vue Devtools. It is automatically registered when:
+
+- `__USE_DEVTOOLS__` is true (dev builds)
+- Running in a browser environment (`IS_CLIENT`)
+- `Proxy` is available
+
+The devtools plugin:
+- Registers stores with Vue Devtools
+- Tracks state mutations with timestamps
+- Displays custom properties added by other plugins
+- Supports time-travel debugging
+
+The devtools plugin relies on dev-only features and is stripped in production builds.
+
+## Conditional Plugins
+
+Plugins can skip certain stores or return nothing:
+
+```js
+function conditionalPlugin({ store, options }) {
+  // Skip specific stores
+  if (store.$id === 'exclude-me') {
+    return
+  }
+
+  // Only extend option stores
+  if (!options.state) {
+    return
+  }
+
+  return { $custom: 'value' }
+}
+```
+
+Returning `undefined` or `void` means the plugin does not extend that store.
+
+## Accessing Vue App
+
+The `app` property allows integrating with Vue's plugin system:
+
+```js
+function vueIntegrationPlugin({ app, store }) {
+  // Register a global property
+  app.provide('myKey', store.$id)
+
+  // Use other Vue plugins' provides
+  const config = app.config.globalProperties.$myConfig
+
+  return { $config: config }
+}
+```
+
+## Real-world Plugin Examples
+
+### Persisted state
+
+```js
+function persistPlugin({ store, options }) {
+  if (!options.persist) return
+
+  const key = `pinia:${store.$id}`
+
+  // Restore from localStorage
+  const saved = localStorage.getItem(key)
+  if (saved) {
+    store.$patch(JSON.parse(saved))
+  }
+
+  // Save on changes
+  store.$subscribe((mutation, state) => {
+    localStorage.setItem(key, JSON.stringify(state))
+  })
+}
+```
+
+### Request state management
+
+```js
+import { ref, computed } from 'vue'
+
+function requestStatePlugin({ store }) {
+  const isLoading = ref(false)
+  const error = ref(null)
+
+  return {
+    $isLoading: isLoading,
+    $error: error,
+    $setError(err) { error.value = err },
+    $setLoading(val) { isLoading.value = val },
+  }
+}
+```
+
 ## TypeScript
 
 - Type the context as `PiniaPluginContext` (imported from 'pinia').

@@ -70,6 +70,35 @@ Property name → index scale, value → value scale.
 | `parsing` | `boolean` or object | How to parse the dataset; `false` disables parsing |
 | `hidden` | `boolean` | Initial visibility of the dataset |
 
+## Parsing and null values
+
+`parsing` also accepts a **function** to compute parsed values per point:
+
+```js
+options: {
+  parsing: (ctx, data) => {
+    // ctx: { dataIndex, datasetIndex }, data: the raw data point
+    return { x: data.customX, y: data.customY };
+  }
+}
+```
+
+`null` creates gaps: line charts draw a gap (unless `spanGaps: true` or a number — max gap length in scale units), bar charts render no bar, scatter/bubble render no point.
+
+### Per-axis labels
+
+`data.labels` is global, but a category scale can override it for its axis:
+
+```js
+options: {
+  scales: {
+    x: { type: 'category', labels: ['A', 'B', 'C'] } // overrides data.labels for x
+  }
+}
+```
+
+Multiline labels: an entry can be an array of strings (`labels: [['Line 1', 'Line 2'], 'Single']`).
+
 TypeScript: pass the custom data shape to `ChartData` when instantiating:
 
 ```ts

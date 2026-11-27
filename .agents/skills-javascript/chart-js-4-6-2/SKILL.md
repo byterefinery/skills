@@ -114,7 +114,11 @@ chart.update('none');    // same, without animation
 - [04-configuration](references/04-configuration.md) — config structure, option resolution, scriptable/indexable options, responsive sizing, canvas background, decimation
 - [05-axes-scales](references/05-axes-scales.md) — scale types (category, linear, logarithmic, time, radial), common options, ticks, range settings
 - [06-plugins](references/06-plugins.md) — plugin API and hooks, built-in plugins (legend, title, subtitle, tooltip)
-- [07-interactions](references/07-interactions.md) — interaction modes, events, converting events to data values
+- [07-interactions](references/07-interactions.md) — interaction modes, events, hover config, active elements, converting events to data values
 - [08-animations](references/08-animations.md) — animation configuration, transitions, easing functions, disabling
 - [09-updating-api](references/09-updating-api.md) — full instance and static API, updating data/options/scales
 - [10-migration](references/10-migration.md) — v3 to v4 breaking changes (option renames, ESM-only, dist file names)
+- [11-responsive](references/11-responsive.md) — responsive layout: container requirements, aspect ratio, onResize, resizeDelay, printing, High-DPI, layout patterns
+- [12-exporting](references/12-exporting.md) — toBase64Image, canvas export, high-quality export, printing, server-side, SVG/PDF export
+- [13-styling](references/13-styling.md) — colors, fonts, scriptable/indexable styling, point styles, segment options, border radius, global defaults
+- [14-developers](references/14-developers.md) — custom chart types, custom scales, custom elements, extending built-ins, plugin hooks, tree shaking, helpers, registration

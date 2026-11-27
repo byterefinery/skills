@@ -58,6 +58,119 @@ Options can be passed via the query string. For real usage examples the README p
 - **Pre-processors** — plugin-based via the build system (e.g. `<style lang="scss">` handled by the corresponding loader).
 - **HMR** — separate HMR for script, template and styles so template updates do not reset component state and style updates do not re-render (README motivation for the facade design).
 
+## <style> Features
+
+### scoped
+
+Adds a unique data attribute to elements and scopes CSS to them:
+
+```vue
+<style scoped>
+.example {
+  color: red;
+}
+</style>
+
+<!-- Compiled to: -->
+<!-- .example[data-v-xxxx] { color: red; } -->
+```
+
+- Child component root elements are affected by both parent and child scoped styles
+- Deep selectors: `:deep(.child)` targets nested elements in child components
+- Slotted content: `:slotted(.header)` targets content passed via slots
+- Global override: `:global(.class)` applies globally
+
+### CSS Modules
+
+```vue
+<style module>
+.red {
+  color: red;
+}
+</style>
+
+<script setup>
+// Classes exposed as $style
+console.log($style.red) // hashed class name
+</script>
+
+<template>
+  <div :class="$style.red">Hello</div>
+</template>
+```
+
+Custom injection name:
+
+```vue
+<style module="styles">
+</style>
+
+<!-- Access via $styles instead of $style -->
+```
+
+### Multiple Style Blocks
+
+```vue
+<style>
+/* Global styles */
+</style>
+
+<style scoped>
+/* Scoped styles */
+</style>
+
+<style module>
+/* CSS modules */
+</style>
+```
+
+## Pre-processors
+
+Use `lang` attribute on any block:
+
+```vue
+<template lang="pug">
+p {{ msg }}
+</template>
+
+<script lang="ts" setup>
+import { ref } from 'vue'
+const msg = ref('Hello')
+</script>
+
+<style lang="scss">
+$primary: #333;
+body { color: $primary; }
+</style>
+```
+
+## Src Imports
+
+Externalize blocks into separate files:
+
+```vue
+<template src="./template.html"></template>
+<script src="./script.js"></script>
+<style src="./style.css"></style>
+```
+
+## Custom Blocks
+
+Project-specific blocks handled by tooling:
+
+```vue
+<i18n>
+{
+  "en": { "message": "Hello" },
+  "ja": { "message": "こんにちは" }
+}
+</i18n>
+
+<gql>
+query { user { name } }
+</gql>
+```
+
 ## In-browser SFC demo
 
 `packages-private/sfc-playground` (deployed at play.vuejs.org) compiles SFCs in the browser; run locally with `pnpm dev-sfc`, build with `pnpm build-sfc-playground` (README). Its `src/` includes dev/prod runtime proxies (`vue-dev-proxy.ts`, `vue-dev-proxy-prod.ts`) and an SSR preview proxy (`vue-server-renderer-dev-proxy.ts`).

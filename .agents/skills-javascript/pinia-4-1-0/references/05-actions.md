@@ -90,3 +90,31 @@ export default {
   },
 }
 ```
+## Action Internals
+
+Pinia wraps every action function with a marker and name symbol:
+
+- `ACTION_MARKER` — identifies a function as an action (for `$onAction` tracking)
+- `ACTION_NAME` — stores the action name string
+
+This wrapping is transparent — actions behave like normal functions but are intercepted by the internal action wrapper that sets the active Pinia and triggers subscriptions.
+
+### Actions inside stores
+
+When an action calls another action within the same store, the `$onAction` listener fires for each call. The internal `action()` helper from setup store helpers can be used to manually mark functions:
+
+```js
+export const useStore = defineStore('my', (helpers) => {
+  const count = ref(0)
+
+  // Manually wrap for $onAction tracking (advanced use)
+  const internalAction = helpers.action(() => {
+    count.value++
+  }, 'internalAction')
+
+  return { count, internalAction }
+})
+```
+
+This is rarely needed in applications — it is intended for advanced use cases like Pinia Colada.
+

@@ -100,3 +100,12 @@ A minimal CSS file can define its own design system before using it:
 - [02-theme-and-sources](references/02-theme-and-sources.md) — @theme options and default namespaces, @source, @reference, v3 @config/@plugin, JS plugin API
 - [03-directives](references/03-directives.md) — @utility, @custom-variant, @variant, @apply, @scope, @tailwind utilities
 - [04-utilities-and-variants](references/04-utilities-and-variants.md) — candidate syntax, important/opacity/arbitrary values, spacing, built-in variant families
+- [05-layout-utilities](references/05-layout-utilities.md) — display, positioning, float/clear, sizing, overflow, container, flexbox, grid, gap, space, table, visibility
+- [06-colors-backgrounds](references/06-colors-backgrounds.md) — color utilities, opacity modifiers, backgrounds, gradients, masks, object-fit
+- [07-typography](references/07-typography.md) — font family/weight/size/style, text color/decoration/overflow, line clamp, text shadow, list styles
+- [08-borders-shadows](references/08-borders-shadows.md) — border radius/width/style/color, divide, outline, box/inset shadow, ring
+- [09-transforms-transitions](references/09-transforms-transitions.md) — transform, translate, scale, rotate, perspective, transitions, animation, will-change, scroll snap, columns
+- [10-filters-blurs](references/10-filters-blurs.md) — filter, blur, brightness, contrast, grayscale, hue-rotate, invert, saturate, sepia, drop-shadow, backdrop filters, opacity
+- [11-arbitrary-values](references/11-arbitrary-values.md) — arbitrary values/properties/variants, data type hints, calc, fractional values, CSS variables
+- [12-variants-detail](references/12-variants-detail.md) — variant usage: state, form state, group/peer, compound, responsive, media queries, arbitrary variants
+- [13-v3-migration](references/13-v3-migration.md) — migrating from v3: key changes, theme config, plugins, presets, @tailwindcss/upgrade
