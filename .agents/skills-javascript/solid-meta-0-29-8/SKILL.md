@@ -56,7 +56,34 @@ const App = () => (
 | `Base`       | `<base>` |                                                              |
 | `Stylesheet` | `<link>` | `Link` shortcut with `rel="stylesheet"` preset (`rel` omitted from its props) |
 
-All accept the standard HTML attributes for their element.
+All accept the standard HTML attributes for their element. Attribute notes:
+
+- **`Meta`** — supports `name`, `property`, `http-equiv`, `charset`, `media`, `content`. Meta tags with the same `name`/`property` deduplicate (deepest/last wins); the same name with different `media` or other key attributes is kept separate.
+- **`Link`** — useful for canonical URLs, favicons, preloads, and stylesheets.
+- **`Style`** — content is raw CSS and is **not** escaped (unlike `Title`, which HTML-escapes children).
+- **`Base`** — sets the `<base>` tag for relative URL resolution.
+
+### Reactive head tags
+
+Head tags respond to signals and component lifecycle — when a component unmounts, its tags are automatically removed and another provider of the same tag takes over:
+
+```jsx
+import { createSignal } from "solid-js";
+import { Title, Meta } from "@solidjs/meta";
+
+function DynamicMeta() {
+  const [page, setPage] = createSignal("home");
+
+  return (
+    <>
+      <Title>{page()} - My App</Title>
+      <Meta name="description" content={`The ${page()} page`} />
+      <button onClick={() => setPage("about")}>About</button>
+      <button onClick={() => setPage("home")}>Home</button>
+    </>
+  );
+}
+```
 
 ### SolidStart setup
 
@@ -78,6 +105,24 @@ export default function App() {
     >
       <FileRoutes />
     </Router>
+  );
+}
+```
+
+Each route can then define its own head tags without affecting other routes — the root `<Title>` acts as a fallback when a route provides none:
+
+```jsx
+// routes/about.tsx
+import { Title, Meta } from "@solidjs/meta";
+
+export default function About() {
+  return (
+    <main>
+      <Title>About - My App</Title>
+      <Meta name="description" content="About our company" />
+      <Meta property="og:type" content="website" />
+      <h1>About Us</h1>
+    </main>
   );
 }
 ```
@@ -120,3 +165,6 @@ On the server, tags are collected and rendered with a `data-sm` marker attribute
 - **Meta identity includes all key attributes.** Two metas with the same `name` but different `content` (or `charset`/`media`/`http-equiv`) coexist; same name and same key attributes collapse to the last.
 - **The SSR head must actually be emitted.** Server-rendered tags are collected into `getAssets()` — if your server template renders `<head>` statically without it (and without `getAssets()`), the head tags never reach the page.
 - **Solid 2 users need the `next` tag.** The 0.29.x line pins `solid-js` peer to `^1.8.4` on purpose so it does not install against Solid 2.0; Solid 2 support is published as `@solidjs/meta@next`. For older bases: Solid 1.0 needs 0.27.x+, Solid 0.x needs 0.26.x.
+- **Don't rely on `data-sm` in selectors.** Server-rendered head tags carry a `data-sm` marker attribute so the client provider can strip them during hydration — it's an implementation detail.
+- **`MetaContext` is exported but internal.** `MetaContext` and `useHead` are available for advanced use (e.g. conditional meta injection from custom hooks); the standard approach is using the JSX components directly.
+- **`<Style>` content is not escaped.** Unlike `<Title>` (which HTML-escapes), `<Style>` passes children through as raw CSS — intentional for CSS injection.

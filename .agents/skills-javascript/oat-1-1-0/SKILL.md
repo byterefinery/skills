@@ -118,4 +118,5 @@ All colors/sizes are CSS variables (`--primary`, `--background`, `--success`, `-
 - [01-components-css](references/01-components-css.md) — markup for all semantic/CSS-only components (typography, button, form, card, alert, badge, table, accordion, switch, progress, meter, skeleton, spinner, avatar, breadcrumb, pagination, dialog)
 - [02-components-js](references/02-components-js.md) — JS WebComponents & APIs (ot-dropdown, ot-tabs, ot-taginput, ot-upload, tooltip, sidebar, ot.toast)
 - [03-layout-utilities](references/03-layout-utilities.md) — 12-column grid, spacing/stacking/alignment helpers, table wrapper
-- [04-theming](references/04-theming.md) — CSS variables, theming, dark mode, selective file inclusion, community extensions
+- [04-theming](references/04-theming.md) — CSS variables, theming, dark mode, CSS layers, selective file inclusion, community extensions
+- [05-recipes](references/05-recipes.md) — composable UI patterns (split button, radio cards, form card, empty state, stats cards), related libraries

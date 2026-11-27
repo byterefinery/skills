@@ -7,8 +7,10 @@ Customizing Oat via CSS variables, dark mode behavior, selective file inclusion,
 - [Theming with CSS variables](#theming-with-css-variables)
 - [Key variables](#key-variables)
 - [Dark mode](#dark-mode)
+- [CSS layers](#css-layers)
 - [Picking and choosing files](#picking-and-choosing-files)
 - [Community extensions](#community-extensions)
+- [Library development setup](#library-development-setup)
 
 ---
 
@@ -46,6 +48,18 @@ Dark mode is applied automatically via `light-dark()` and `color-scheme: light d
 - To customize the dark theme specifically, redefine theme variables scoped inside a `[data-theme="dark"]` selector in your own CSS.
 - To force a theme regardless of the OS, set `document.body.style.colorScheme = 'dark'` or `'light'`.
 
+## CSS layers
+
+`00-base.css` declares the layer order: `@layer theme, base, components, animations, utilities;`
+
+- `theme` — `:root` variables and the `data-variant` → `--_variant-color` mappings.
+- `base` — reset, typography, buttons, form controls.
+- `components` — component CSS (cards, tables, dialogs, toasts, sidebar, …).
+- `animations` — keyframes and animation helpers.
+- `utilities` — `.hstack`, `.vstack`, `.gap-*`, margins, `.unstyled`, alignment, …
+
+Unlayered styles (typical hand-written CSS) beat every Oat layer, so theme overrides and ad-hoc fixes usually need no `!important`.
+
 ## Picking and choosing files
 
 Bundling all of Oat is fine given its size, but you can include components selectively. If you do, these are **must-include**:
@@ -67,3 +81,13 @@ Third-party extensions that work with Oat (from the docs):
 - **oat-upload** — dropzone, file previews, validation, removal, and progress for native `<input type="file">`
 
 The docs site is at https://oat.ink; the library is MIT licensed.
+
+## Library development setup
+
+For developing Oat itself (docs/demo site):
+
+1. Install [zola](https://github.com/getzola/zola/releases) (static site generator) and [esbuild](https://esbuild.github.io/).
+2. Clone the repo, then `cd docs` and run `zola serve` — docs/demo site at http://localhost:1111.
+3. After changing any CSS or JS file, run `make dist` (esbuild bundles + minifies, copies into `docs/static/`); the demo site auto-updates.
+
+`make publish` builds, writes the git tag version into package.json, and publishes `@knadh/oat` to npm.

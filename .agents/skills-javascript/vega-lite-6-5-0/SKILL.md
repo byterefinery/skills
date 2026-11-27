@@ -69,7 +69,20 @@ Property scope:
 
 ### Marks
 
-Primitive marks: `area`, `bar`, `circle`, `line`, `point`, `rect`, `rule`, `text`, `tick`, `geoshape`. Composite marks (macros of layered primitives): `boxplot`, `errorband`, `errorbar`. `mark` is either a type string or a definition object (`{type, ...properties}`); mark properties set in encoding channels override the definition.
+Primitive marks: `area`, `arc`, `bar`, `circle`, `image`, `line`, `point`, `rect`, `rule`, `square`, `text`, `tick`, `trail`, `geoshape`. Composite marks (macros of layered primitives): `boxplot`, `errorband`, `errorbar`. Typical uses: `bar` (bars, grouped/stacked), `line`/`area` (trends), `circle`/`point`/`square` (scatter, bubble), `arc` (pie/donut via `theta`), `text` (labels), `tick` (1D strips), `rule` (reference lines), `trail` (variable-width lines), `geoshape` (maps), `image` (images at data positions), `rect` (heatmaps). `mark` is either a type string or a definition object (`{type, ...properties}`); mark properties set in encoding channels override the definition. Mark-specific properties (`cornerRadius`, `interpolate`, `innerRadius`, `extent`, `width`/`height`, …) in [05-mark-properties](references/05-mark-properties.md).
+
+### Data Types
+
+Field types for encoding channels:
+
+| Type | Description | Example |
+|---|---|---|
+| `quantitative` | Continuous numeric values | temperature, price, count |
+| `ordinal` | Ordered categories | rank, size class, binned values |
+| `nominal` | Unordered categories | name, origin, category |
+| `temporal` | Date/time values | date, timestamp, year-month |
+
+Aggregations like `sum`/`mean` work on `quantitative` fields (`count` works on any type); `timeUnit` requires `temporal`. Stacking is automatic for `bar`/`area` when a nominal/ordinal channel is mapped to `color` — disable with `stack: null`.
 
 ### Encoding channels
 
@@ -148,3 +161,4 @@ CLI tools ship with the package — `vl2vg`, `vl2png`, `vl2svg`, `vl2pdf` (spec 
 - [02-data-and-transforms](references/02-data-and-transforms.md) — data source types, formats, generators, datasets, and all view-level transforms
 - [03-parameters-and-selection](references/03-parameters-and-selection.md) — variables, point/interval selections, expressions, predicates, data extents, built-in names
 - [04-usage-and-cli](references/04-usage-and-cli.md) — vegaEmbed, `vegaLite.compile` options, `vl2*` CLI tools
+- [05-mark-properties](references/05-mark-properties.md) — mark-specific properties for every mark (bar, line, area, arc, text, tick, trail, rect, geoshape, image, boxplot, errorbar, errorband)

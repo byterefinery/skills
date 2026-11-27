@@ -101,7 +101,7 @@ CSS-like: `node`, `edge`, `*`, `.class`, `#id`, data tests `[foo]`, `[!foo]`, `[
 
 ### Graph algorithms
 
-On collections: `breadthFirstSearch`, `depthFirstSearch`, `aStar`, `bellmanFord`, `dijkstra`, `floydWarshall`, `pageRank`, `betweennessCentrality`, `closenessCentrality`, `degreeCentrality` (+ normalized variants), `affinityPropagation`. See [04-algorithms-and-performance](references/04-algorithms-and-performance.md).
+On collections: `breadthFirstSearch`, `depthFirstSearch`, `aStar`, `bellmanFord`, `dijkstra`, `floydWarshall`, `pageRank`, `betweennessCentrality`, `closenessCentrality`, `degreeCentrality` (+ normalized variants), `kruskal` (MST), `kargerStein` (min cut), `markovClustering`, `kMeans`, `kMedoids`, `fuzzyCMeans`, `hierarchicalClustering`, `affinityPropagation`, `tarjanStronglyConnected`, `hopcroftTarjanBiconnected`, `hierholzer` (Eulerian circuit). See [04-algorithms-and-performance](references/04-algorithms-and-performance.md).
 
 ## Gotchas
 
@@ -124,3 +124,5 @@ On collections: `breadthFirstSearch`, `depthFirstSearch`, `aStar`, `bellmanFord`
 - [02-styling-and-selectors](references/02-styling-and-selectors.md) — stylesheet formats, selectors, function values
 - [03-layouts-and-extensions](references/03-layouts-and-extensions.md) — built-in layouts, `cytoscape.use()`, extension ecosystem
 - [04-algorithms-and-performance](references/04-algorithms-and-performance.md) — graph algorithms and the performance tuning checklist
+- [05-events](references/05-events.md) — event system: user input, collection/graph events, custom events, common patterns
+- [06-animation](references/06-animation.md) — `animate()` API, easing, queues, delays, style transitions, animation patterns
