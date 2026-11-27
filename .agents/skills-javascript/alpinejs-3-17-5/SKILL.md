@@ -149,7 +149,7 @@ All plugins follow the same install pattern — CDN `<script defer>` **before** 
 - **`@alpinejs/persist`** — `$persist(0)` wraps `x-data` values into localStorage (key `_x_<prop>`); `.as('key')`, `.using(sessionStorage)`; `Alpine.$persist` global
 - **`@alpinejs/resize`** — `x-resize="w = $width; h = $height"` via ResizeObserver; `.document`, `.viewport`
 - **`@alpinejs/sort`** — `x-sort` + `x-sort:item` drag-to-reorder (SortableJS); `x-sort:group`, `x-sort:handle`, `x-sort:ignore`, `x-sort.ghost`, `x-sort:config`; `$item`/`$position` handler
-- **`@alpinejs/ui`** — headless UI kit package (ships in the monorepo at 3.17.5; not covered by this tag's docs tree)
+- **`@alpinejs/ui`** — headless UI components with ARIA wiring, no styling of its own: combobox, dialog, disclosure, listbox, menu, popover, radio, switch, tabs; per-component directives, parts, and magics in [06-plugins-ui](references/06-plugins-ui.md)
 - **`@alpinejs/navigate` / `@alpinejs/history`** — SPA-like navigation and query-string state (alpha; versions 3.10.2 / 3.0.0-alpha.0 in this tag)
 
 Per-plugin directives, modifiers, and worked examples: [05-plugins](references/05-plugins.md).
@@ -187,3 +187,4 @@ Per-plugin directives, modifiers, and worked examples: [05-plugins](references/0
 - [03-magics-and-globals](references/03-magics-and-globals.md) — `$` magics, `Alpine.data/store/bind`, lifecycle events
 - [04-advanced](references/04-advanced.md) — reactivity primitives, async/await in expressions, custom directives and magics, CSP build limits
 - [05-plugins](references/05-plugins.md) — anchor, collapse, focus, intersect, mask, morph, persist, resize, sort
+- [06-plugins-ui](references/06-plugins-ui.md) — `@alpinejs/ui` headless components (combobox, dialog, disclosure, listbox, menu, popover, radio, switch, tabs)

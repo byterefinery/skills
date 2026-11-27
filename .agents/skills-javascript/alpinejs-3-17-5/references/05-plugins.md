@@ -207,6 +207,5 @@ Drag-to-reorder elements (SortableJS under the hood).
 
 These packages ship in the monorepo but have no pages under `packages/docs` at v3.17.5 (treat their APIs as unverified here):
 
-- `@alpinejs/ui` (3.17.5) — headless UI kit (combobox, dialog, disclosure, listbox, menu, popover, radio, switch, tabs).
 - `@alpinejs/navigate` (3.10.2) — SPA-like navigation; dev harness `index2.html` uses `x-navigate:persist`.
 - `@alpinejs/history` (3.0.0-alpha.0) — binds state to query-string parameters via the history API.
