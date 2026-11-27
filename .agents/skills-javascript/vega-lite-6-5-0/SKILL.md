@@ -1,8 +1,8 @@
 ---
 name: vega-lite-6-5-0
-description: Vega-Lite (v6.5.0) is a concise JSON grammar for interactive data visualization that compiles to Vega specs. Covers marks, encoding channels, data sources, transforms, layered and faceted composition, and selections and parameters. Use when writing or debugging a Vega-Lite spec, embedding charts with vegaEmbed, compiling to Vega/SVG/PNG/PDF via vegaLite.compile or the vl2* CLI tools, or adding interactive selections.
+description: Vega-Lite (v6.5.0) is a concise JSON grammar for interactive data visualization that compiles to Vega specs. Covers marks, encoding channels, data sources, transforms, layered and faceted composition, and selections and parameters. Every spec must be validated with vega-lite.sh before output; iterate until zero errors remain. Use when writing or debugging a Vega-Lite spec, embedding charts with vegaEmbed, compiling to Vega/SVG/PNG/PDF via vegaLite.compile or the vl2* CLI tools, or adding interactive selections.
 license: BSD-3-Clause
-compatibility: Requires the vega-lite npm package plus the vega ^6.4.0 peer dependency for rendering; the vl2* CLI tools need Node >= 22
+compatibility: Requires bun for scripts/vega-lite.sh (validates against the bundled v6.5.0 JSON schema, no network needed); the vl2* CLI tools need the vega-lite npm package, the vega ^6.4.0 peer dependency, and Node >= 22
 metadata:
   tags:
     - javascript
@@ -19,6 +19,26 @@ Vega-Lite (v6.5.0, BSD-3-Clause) is a concise, high-level JSON grammar for inter
 Official docs: https://vega.github.io/vega-lite/docs/ · examples: https://vega.github.io/vega-lite/examples/ · try it in the [Vega Editor](https://vega.github.io/editor/#/examples/vega-lite/bar)
 
 ## Usage
+
+### Validate a spec
+
+`scripts/vega-lite.sh` validates specs against the official v6.5.0 JSON schema (bundled as `scripts/vega-lite-schema.json`, run by bun). It extracts `vega-lite` code blocks from markdown, parses the JSON, and reports schema violations with instance paths.
+
+```bash
+# Validate a markdown file (checks all ```vega-lite blocks)
+vega-lite.sh validate <file.md>
+
+# Validate a .json or .vl.json file
+vega-lite.sh validate <file.json>
+
+# Validate a directory recursively
+vega-lite.sh validate references/
+
+# Validate from stdin (JSON only)
+echo '{"data":{"values":[]},"mark":"bar"}' | vega-lite.sh validate -
+```
+
+Options: `-q/--quiet` (errors only), `--json` (machine-readable), `-h/--help`. Exit codes: 0 all valid, 1 one or more invalid, 2 usage error. Do not consider a chart complete until `vega-lite.sh validate` exits with code 0; do not output or save a spec that has not been validated.
 
 ### Spec anatomy
 
@@ -109,6 +129,7 @@ CLI tools ship with the package — `vl2vg`, `vl2png`, `vl2svg`, `vl2pdf` (spec 
 
 ## Gotchas
 
+- **Validation is mandatory, not optional** — run `vega-lite.sh validate` on every spec you write and iterate until the exit code is 0. Fix schema violations reported by the bundled v6.5.0 schema; a spec that compiles in the browser may still fail strict schema validation.
 - **`$schema` must match the major** — v6 specs use `https://vega.github.io/schema/vega-lite/v6.json`.
 - **`vega` is a peer dependency** — install it alongside `vega-lite` (and `vega-embed` for embedding); vega-lite alone only compiles.
 - **CLI needs Node >= 22**, and Node rendering of PNG/SVG needs the `canvas` package when you hit `Error: CanvasRenderer is missing a valid canvas or context`.

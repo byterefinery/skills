@@ -3,7 +3,8 @@ name: mermaid-12-3-0
 description: >
   Syntax reference and authoring guide for the Mermaid 12.3.0 diagramming library.
   Use when writing, debugging, or converting Mermaid diagrams in markdown, HTML,
-  or the JavaScript API. Covers every diagram type (flowchart, sequence, state,
+  or the JavaScript API. Every diagram must pass mermaid.sh validate before
+  output. Covers every diagram type (flowchart, sequence, state,
   class, gantt, ER, pie, gitGraph, journey, mindmap, timeline, xychart, radar,
   quadrantChart, sankey, block, architecture, C4, packet, treemap, venn, wardley,
   ishikawa, kanban, requirementDiagram, agentflow-beta, swimlane-beta, usecase-beta,
@@ -11,6 +12,7 @@ description: >
   look, and layout defaults, frontmatter configuration, and the 12.3.0 additions
   (flowchart step animations, edge IDs, new edge markers).
 license: MIT
+compatibility: Requires bun for scripts/mermaid.sh; the render subcommand additionally fetches @mermaid-js/mermaid-cli via bun x
 metadata:
   tags:
     - diagrams
@@ -50,6 +52,38 @@ flowchart LR
 ````
 
 The first line inside the fence selects the diagram type. Unknown words and misspellings break a diagram; unknown parameters fail silently.
+
+### Validate a diagram
+
+`scripts/mermaid.sh` wraps the official mermaid parser (`mermaid.parse()`) in a bun script. Validate from stdin:
+
+```bash
+echo 'flowchart LR
+    A-->B' | mermaid.sh validate -
+```
+
+Validate a markdown file (checks all ` ```mermaid ` blocks) or a `.mmd` file, or a directory recursively:
+
+```bash
+mermaid.sh validate ./docs/diagram.md
+mermaid.sh validate ./docs/ --quiet
+mermaid.sh validate --json ./diagram.md
+```
+
+Options: `-q/--quiet` (errors only), `--json` (machine-readable), `-h/--help`. Exit codes: 0 all valid, 1 one or more invalid, 2 usage error.
+
+### Convert to SVG/PNG
+
+`mermaid.sh render` converts `.mmd` or `.md` files via `@mermaid-js/mermaid-cli`:
+
+```bash
+mermaid.sh render -i diagram.mmd                 # default output diagram.svg
+mermaid.sh render -i diagram.mmd -o diagram.png  # explicit output
+mermaid.sh render -i diagram.mmd -t dark         # theme: default, dark, forest, neutral, base
+mermaid.sh render -i notes.md -o output/         # extracts mermaid blocks from markdown
+```
+
+Run `mermaid.sh render --help` for all options (`-w` width, `-H` height, `-s` scale, `-c` config file).
 
 ### Diagram types at a glance
 
@@ -121,8 +155,23 @@ Two elements: the definition in `<pre class="mermaid">` and an ES module import.
 - `mindmap.colorBy: depth` opt-in coloring by hierarchy depth (added in 12.2.0).
 - DOMPurify bumped to 3.4.17; bundled elkjs upgraded to 0.12.0.
 
+## Validation Workflow
+
+Every Mermaid diagram must pass validation before being shown to the user or written to a file. Follow this loop without skipping steps:
+
+1. **Write** the diagram inside a ` ```mermaid ` code block in a `.md` or `.mmd` file.
+2. **Validate** by running `mermaid.sh validate <file>`, or pipe diagram code to stdin with `mermaid.sh validate -` for quick checks.
+3. **Fix** every parser error reported. Read the error message carefully — it identifies the syntax issue and line.
+4. **Re-validate** after every fix. Repeat until validation exits with code 0 (all diagrams valid).
+5. **Output** only after the last validation passes clean.
+
+Rules: never present a diagram that hasn't passed validation; only ` ```mermaid ` blocks in `.md` or `.mmd` files are allowed (no other fence variants or extensions); for stdin validation, pipe just the diagram body without fence markers.
+
 ## Gotchas
 
+- **Validation is mandatory, not optional** — run `mermaid.sh validate -` (stdin) or `mermaid.sh validate <file>` after every diagram you write. Fix all reported errors iteratively until exit code is 0. Never present an unvalidated or invalid diagram to the user.
+- **Parser reports one error at a time** — fixing one syntax error may reveal the next. Always re-validate after each fix; a diagram with three typos will produce three separate validation rounds.
+- **Use `--json` for scripted iteration** — `mermaid.sh validate --json -` outputs structured JSON, making it easier to parse errors when automating fix loops.
 - **The word `end` breaks flowcharts and sequence diagrams** — lowercase `end` is a reserved terminator. Capitalize it (`End`) or wrap the label in quotes/parens. Same for `graph` in `graph TD` vs a node named `graph`.
 - **`o` or `x` as the first letter of a node** — `A---oB` is parsed as a circle edge ending at B, not a node named `oB`. Add a space or capitalize.
 - **Beta keywords are exact** — `radar`, `architecture`, `venn`, `wardley`, `cynefin`, `agentflow`, `swimlane`, `treeView`, `usecase`, `railroad` (and the three railroad notation keywords) require the `-beta` suffix. `ishikawa` and `treemap` work with or without it.
