@@ -32,6 +32,7 @@ fn();
 | `--map <specifier=target...>` | Custom import mappings (see below) |
 | `--no-nodejs-compat` | Disable Node.js compat in output for loading core Wasm via FS |
 | `--instantiation [sync\|async]` | Export an `instantiate()` function instead of direct ESM |
+| `--import-bindings [js\|optimized\|hybrid\|direct-optimized]` | Bindings mode for imports (default `js`); see [09-optimized-host-bindings](09-optimized-host-bindings.md) |
 | `--cm-runtime-es-module <base>` | Experimental: import the component runtime from a package/directory base instead of bundling jco's runtime |
 | `--valid-lifting-optimization` | Remove internal validity checks (smaller output); assumes valid components |
 | `--flags-as-bigint` | WIT flags as `bigint` with named flag constants (default: objects of booleans) |

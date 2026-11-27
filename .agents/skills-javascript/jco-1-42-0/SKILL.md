@@ -10,8 +10,8 @@ description: >
   `jco run`, serve WASI HTTP components via `jco serve`, optimize via `jco opt`, and wasm-tools
   operations (`jco print`, `jco parse`, `jco metadata-show`, `jco metadata-add`, `jco new`,
   `jco embed`). Covers WASI 0.2/0.3 shims, import mapping, instantiation modes, WIT type
-  representations, resources, error wrapping, jco-std Node.js built-in compatibility, and the
-  @bytecodealliance/jco-transpile library API.
+  representations, resources, error wrapping, jco-std Node.js built-in compatibility,
+  optimized host bindings (cabiLower), and the @bytecodealliance/jco-transpile library API.
 metadata:
   tags:
     - webassembly
@@ -105,6 +105,7 @@ Browser-compatible API (no Node.js deps): `import { transpile } from '@bytecodea
 - **Transpiled output is ESM** — Node.js needs `"type": "module"` in the nearest package.json.
 - **`--instantiation async|sync` changes the output shape** — the default emits a direct ES module with implicit imports; instantiation mode emits a single `instantiate(getCoreModule, imports, ...)` function. Jco's default Node capability map is not applied to instantiation output — supply or map every import.
 - **`--map` syntax** — `--map my:pkg/iface@1.2.3=./impl.js`; a `#` selects a named export (`=./impl.js#iface`); `*` wildcards work like package.json exports. Quote mappings in shells.
+- **`--import-bindings` controls the host binding strategy** — `js` (default, high-level), `hybrid` (checks `Symbol.for('cabiLower')` per function), `optimized` (assumes `cabiLower` on all imports), `direct-optimized` (imports are low-level functions). Use `hybrid` for performance-sensitive hosts that need a fallback.
 - **Top-level `result` returns throw in JS** — a `result` in a container (record field, parameter) is `{ tag: 'ok' | 'err', val }`. `u64`/`s64` are `BigInt`; `list<u8>` is `Uint8Array`, other `list<T>` are `T[]`.
 - **`jco run` / `jco serve` are not a sandbox** — the default shims expose host environment, network, and (with preopens) filesystem unless explicitly sandboxed. Do not run untrusted components with ambient host access.
 - **`jco serve` is for development and JS integration** — prefer Wasmtime when peak runtime performance matters.
@@ -125,3 +126,4 @@ Browser-compatible API (no Node.js deps): `import { transpile } from '@bytecodea
 - [06-jco-std-and-node-builtins](references/06-jco-std-and-node-builtins.md) — Node.js built-in compatibility, Hono/Express adapters, WASI version selection
 - [07-wasm-tools](references/07-wasm-tools.md) — wit, print, parse, metadata-show/add, new, embed, opt
 - [08-library-api](references/08-library-api.md) — @bytecodealliance/jco-transpile, /component subpath, rolldown-plugin-jco
+- [09-optimized-host-bindings](references/09-optimized-host-bindings.md) — import bindings modes, cabiLower protocol, ResourceTable, cabiRep/cabiDispose
