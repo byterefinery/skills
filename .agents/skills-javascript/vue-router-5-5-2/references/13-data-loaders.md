@@ -4,6 +4,13 @@ Data loaders move async state management (data fetching) **out of the component 
 
 Features: parallel fetching and deduplication, automatic loading-state management, error handling, extensible loader implementations, SSR support, prefetching support.
 
+## When to use loaders vs component lifecycle
+
+Fetching data for a route can happen in two ways:
+
+- **Fetching after navigation** — navigate first and fetch in the incoming component (e.g. in `onMounted`), displaying a loading state while the request runs. Simplest approach; fine when the data is not needed before the component renders.
+- **Fetching before navigation** — fetch in the incoming route's enter guard and only proceed when the data is ready. The legacy way is `beforeRouteEnter` with the `next` callback (deprecated); for new code use **data loaders**, which do this outside the component lifecycle.
+
 ## Setup
 
 Install `DataLoaderPlugin` **before the router**:

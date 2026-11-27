@@ -1,6 +1,6 @@
 ---
 name: vue-router-5-5-2
-description: Vue Router 5.5.2 — the official client-side router for Vue 3. Covers route configuration and matching syntax (dynamic segments, custom regex, repeatable and optional params), nested routes, programmatic navigation, navigation guards with return-based results (next is deprecated), RouterLink/RouterView components, composition API, history modes, scroll behavior, dynamic routes, file-based routing via the core vue-router/vite plugin, and 5.5.x features including the experimental resolver-based router with typed params and query values, custom param parsers, data loaders with reroute, scroll restoration, and vapor mode. Use when working with Vue 3 routing, SPA navigation, or client-side URL management.
+description: Vue Router 5.5.2 — the official client-side router for Vue 3. Covers route configuration and matching syntax (dynamic segments, custom regex, repeatable and optional params), nested routes, programmatic navigation, navigation guards with return-based results (next is deprecated), RouterLink/RouterView components, composition API, history modes, scroll behavior, dynamic routes, file-based routing via the core vue-router/vite plugin, and 5.5.x features including the experimental resolver-based router with typed params and query values, custom param parsers, data loaders with reroute, scroll restoration, and vapor mode. Use when working with Vue 3 routing, SPA navigation, client-side URL management, or migrating from Vue Router 4 or unplugin-vue-router.
 license: MIT
 compatibility: Requires Vue ^3.5.34, 3.6.0-0, or 4.0.0 or later. File-based routing and the Vite plugin require Vite ^7.3.0 or 8.0.0. Pinia Colada data loaders require pinia ^3.0.4 or ^4.0.2 and @pinia/colada >=0.21.2. Vapor mode requires Vue 3.6 or later.
 metadata:
@@ -114,6 +114,7 @@ Pin exact versions in CDN URLs. Production builds are `vue-router.global.prod.js
 - **Avoid slow regex in the middle of paths** — a repeatable `.*` param (`/:p(.*)*/suffix`) causes serious performance issues. Put match-everything params at the very end, or make a mid-path param non-repeatable.
 - **`RouterLink` replaces `<a>`** — use `to`, not `href`. Use the `custom` prop to render a non-anchor element while keeping routing behavior.
 - **Lazy components must be functions** — `component: () => import('./Page.vue')`, not the Promise directly. The router starts the import during guard resolution.
+- **`<RouterView>` can display a route other than the URL one** — pass a resolved location to the `route` prop (the modal-with-own-URL pattern); load its lazy components first with `loadRouteLocation()`, and note that inside that view `useRoute()`/nested `<RouterView>`s follow the displayed route (v5.5 behavior — v5.4 and earlier used the current route). Navigation objects also accept `state`, stored in HTML5 `history.state` (see 05-components).
 - **`router.push()` returns a Promise** — catch it and check `isNavigationFailure(err, NavigationFailureType.duplicated)` to ignore redundant navigations silently.
 - **`addRoute(name, record)` returns a dispose function** — call it to remove the route; `removeRoute(name)` also works.
 - **Detect initial navigation with `from === START_LOCATION`** — `START_LOCATION` is exported from `vue-router`.
@@ -128,9 +129,9 @@ Pin exact versions in CDN URLs. Production builds are `vue-router.global.prod.js
 
 - [01-getting-started](references/01-getting-started.md) — Installation, CDN builds, standard setup, accessing router and route
 - [02-route-records](references/02-route-records.md) — Route configuration, matching syntax, nested routes, redirects, aliases, meta fields
-- [03-navigation](references/03-navigation.md) — Programmatic navigation, push/replace, params and encoding rules, go/back/forward
+- [03-navigation](references/03-navigation.md) — Programmatic navigation, push/replace, params and encoding rules, go/back/forward, history state, custom query parsing, loadRouteLocation
 - [04-navigation-guards](references/04-navigation-guards.md) — Guard lifecycle, global/per-route/component guards, migrating from next
-- [05-components](references/05-components.md) — RouterLink, useLink, RouterView, named views, active links, transitions
+- [05-components](references/05-components.md) — RouterLink, useLink, RouterView, the `route` prop (modals with their own URL), named views, active links, transitions
 - [06-history-modes](references/06-history-modes.md) — HTML5, hash, memory history, base paths, server configurations
 - [07-composition-api](references/07-composition-api.md) — useRouter, useRoute, onBeforeRouteLeave/Update, inject in guards
 - [08-scroll](references/08-scroll.md) — scrollBehavior and experimental scroll restoration (useScrollRestoration, onRouteRendered)
@@ -138,4 +139,5 @@ Pin exact versions in CDN URLs. Production builds are `vue-router.global.prod.js
 - [10-error-handling](references/10-error-handling.md) — Navigation failures, isNavigationFailure, router.onError
 - [11-file-based-routing](references/11-file-based-routing.md) — vue-router/vite plugin, file conventions, definePage, typed routes, Volar
 - [12-experimental-router](references/12-experimental-router.md) — experimental_createRouter, typed params and query, param parsers, encoding, vapor mode
-- [13-data-loaders](references/13-data-loaders.md) — defineBasicLoader, defineColadaLoader, reroute, SSR, navigation awareness
+- [13-data-loaders](references/13-data-loaders.md) — defineBasicLoader, defineColadaLoader, reroute, SSR, navigation awareness, loaders vs component lifecycle
+- [14-migration-v4-to-v5](references/14-migration-v4-to-v5.md) — no breaking changes for v4 users, iife/devtools caveat, v6 ESM-only plan, unplugin-vue-router import changes, new exports

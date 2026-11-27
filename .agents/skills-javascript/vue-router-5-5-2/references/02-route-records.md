@@ -172,7 +172,20 @@ router.beforeEach(to => {
 })
 ```
 
-Update `document.title` from `afterEach` using `to.meta.title`. Augment the `RouteMeta` TypeScript interface with your fields (see 03-navigation and the typed routes docs).
+Update `document.title` from `afterEach` using `to.meta.title`. In TypeScript, augment the `RouteMeta` interface with your fields (module augmentation — keep the `import 'vue-router'` in the file):
+
+```ts
+import 'vue-router'
+
+declare module 'vue-router' {
+  interface RouteMeta {
+    requiresAuth?: boolean
+    title?: string
+  }
+}
+```
+
+Now meta fields are typed in guards and components (`to.meta.requiresAuth` is `boolean | undefined`).
 
 ## Lazy loading
 

@@ -62,3 +62,43 @@ Useful for generating real URLs (e.g., in SSR or for sharing links) without trig
 ## Waiting for navigation to finish
 
 All navigation methods return a Promise. `router.isReady()` resolves when the initial navigation is finished — await it before mounting when the first render must reflect the resolved route (e.g., SSR).
+
+## History state
+
+Navigation objects accept a `state` option, stored in the HTML5 `history.state` and readable after the navigation (it also survives reloads):
+
+```js
+router.push({ name: 'user', params: { id: 1 }, state: { backgroundView: '/home' } })
+
+// read it later, e.g. from a guard or a component
+const { backgroundView } = history.state ?? {}
+```
+This is the mechanism behind the modal-with-own-URL pattern (see 05-components).
+
+## Custom query parsing
+
+`createRouter` accepts `parseQuery` and `stringifyQuery` options to replace the default query (de)serialization — e.g. with the `qs` package for nested query objects:
+
+```js
+const router = createRouter({
+  history: createWebHistory(),
+  routes,
+  parseQuery: search => qs.parse(search),
+  stringifyQuery: query => qs.stringify(query),
+})
+```
+
+`parseQuery` and `stringifyQuery` are also exported from `vue-router` for standalone use.
+
+## `loadRouteLocation()`
+
+Resolves (loads) the lazy route components of a resolved route location without navigating:
+
+```js
+import { loadRouteLocation } from 'vue-router'
+
+const resolved = router.resolve({ name: 'user', params: { id: 1 } })
+await loadRouteLocation(resolved)
+```
+
+Required before rendering such a route through the `<RouterView :route="...">` prop (see 05-components) — e.g. in `beforeResolve` when a modal's background view uses lazy loaded components.

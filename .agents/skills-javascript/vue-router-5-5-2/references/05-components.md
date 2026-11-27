@@ -39,7 +39,46 @@ Renders the component matched at the current depth. Depth auto-increments for ne
 </RouterView>
 ```
 
-Wrap `<RouterView>` inside `<transition>`/`<keep-alive>`, not the other way around. The slot also exposes the route location; the stable router additionally exposes `Component` (the resolved route component).
+Wrap `<RouterView>` inside `<transition>`/`<keep-alive>`, not the other way around. The slot also exposes the route location; the stable router additionally exposes `Component` (the resolved route component). Putting a template ref inside the slot attaches it to the route component (a ref on `<RouterView>` itself yields the RouterView instance instead).
+
+## Displaying a different route (`route` prop)
+
+By default `<RouterView>` displays the current route. Pass a `route` prop to display another route location instead, while the URL stays the same:
+
+```vue
+<RouterView :route="router.resolve('/users/1')" />
+```
+
+- The value must be a resolved route location, e.g. the result of `router.resolve()`.
+- If the route components are lazy loaded, load them first with `loadRouteLocation()` (see 03-navigation).
+- When the `route` prop is `undefined`, the view inherits the route provided by the parent view. Only a top-level `<RouterView>` falls back to the current route from the URL.
+
+### Modals with their own URL
+
+The most common use case: a modal that has its own URL, while the page that opened it stays visible in the background. Save the background page's location in the history state when opening the modal:
+
+```ts
+router.push({
+  name: 'user',
+  params: { id },
+  state: { backgroundView: router.currentRoute.value.fullPath },
+})
+```
+
+Then render the background page with the `route` prop, and render the modal **next to it** with a second `<RouterView>` that displays the current route. The same route component is displayed in the modal when the user opens it from a page, and as a full page when the user visits `/users/1` directly or reloads the page. If the background page uses lazy loaded components, load them before the navigation ends:
+
+```ts
+router.beforeResolve(async () => {
+  const { backgroundView } = history.state ?? {}
+  if (backgroundView) {
+    await loadRouteLocation(router.resolve(backgroundView))
+  }
+})
+```
+
+Reading routes inside the view: nested `<RouterView>`s, `useRoute()`, and the active classes of `<RouterLink>` inside a `<RouterView>` with a `route` prop use that route. Some values still use the current route (the URL): `$route` (same as `useRouter().currentRoute.value`), and relative locations in `router.push()` / `<RouterLink>` (resolved against the current route, not the displayed one). If a component needs the current route, place it outside the `<RouterView>` that receives the `route` prop, or read `useRouter().currentRoute`.
+
+> In v5.4 and earlier, `useRoute()` and nested `<RouterView>`s ignored the `route` prop and always used the current route. If a component inside the view relied on that (e.g. a modal placed inside the background page reading the modal route's params), move it next to the `<RouterView>`.
 
 ## Named views
 
