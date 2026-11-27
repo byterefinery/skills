@@ -32,3 +32,63 @@ Pass a `Partial<Options>` — omitted fields fall back to `defaultOptions`.
 - `renderAsync(data, bodyContainer, styleContainer?, options?)` — `styleContainer` receives `STYLE` nodes (styles, numberings, fonts); if `null`/omitted, `bodyContainer` is used for everything.
 - `h` receives an `HElement` (`{ ns?, tagName, className?, style?, children?, ...props }`), an existing `Node`, or a `string`; the default factory creates DOM nodes with `document.createElement` / `createElementNS` (HTML, SVG, and MathML namespaces are supported via `ns`).
 - Spread `defaultOptions` when overriding so a future default change does not silently flip behavior: `{ ...defaultOptions, useBase64URL: true }`.
+
+## Custom h function (experimental)
+
+`h` is the DOM factory hook: the renderer calls it for every virtual element (`HElement`), existing `Node`, or text `string`. Public type (from `dist/docx-preview.d.ts`, v0.4.0):
+
+```ts
+export type HElement = {
+    ns?: string;  // namespace URI — source `ns` enum: html (xhtml), svg, mathML
+    tagName: string;  // "#fragment", "#comment", or a tag name
+    className?: string;
+    style?: Record<string, string> | string;
+    children?: (HElement | Node | string)[];
+} & Record<string, any>;
+
+// in Options:
+h: (elemOrText: HElement | Node | string) => Node;  // "experimental, subject to change"
+```
+
+Default factory behavior (from `src/html.ts`):
+
+- `string` → `document.createTextNode`
+- existing `Node` → returned as-is
+- `tagName: "#fragment"` → `DocumentFragment`
+- `tagName: "#comment"` → comment node (text = `children[0]`)
+- `ns` set → `createElementNS(ns, tagName)` (SVG/MathML), otherwise `createElement`
+- `className` → `class` attribute; `style` → string goes to the `style` attribute, object is merged into `element.style`
+- remaining props → set as **element properties** (not attributes), skipped when `undefined`
+- `children` → rendered recursively through `h`
+
+**`h` is not exported from the package in v0.4.0** — the runtime exports only `defaultOptions`, `parseAsync`, `renderAsync`, `renderDocument` (plus types). You cannot wrap the default factory; customizing means providing your own complete `h` implementation:
+
+```js
+function customH(elemOrText) {
+    if (typeof elemOrText === "string") return document.createTextNode(elemOrText);
+    if (elemOrText instanceof Node) return elemOrText;
+
+    const { ns, tagName, className, style, children, ...props } = elemOrText;
+
+    if (tagName === "#fragment") return document.createDocumentFragment();
+    if (tagName === "#comment") return document.createComment(children[0]);
+
+    const result = ns
+        ? document.createElementNS(ns, tagName)
+        : document.createElement(tagName);
+
+    if (className) result.setAttribute("class", className);
+    if (typeof style === "string") result.setAttribute("style", style);
+    else if (style) Object.assign(result.style, style);
+    for (const [key, value] of Object.entries(props))
+        if (value !== undefined) result[key] = value;
+
+    // custom hook: mark paragraphs for CSS/tests
+    if (tagName === "p") result.setAttribute("data-docx-paragraph", "true");
+
+    children?.forEach((c) => result.appendChild(customH(c)));
+    return result;
+}
+
+await renderAsync(blob, container, null, { h: customH });
+```
